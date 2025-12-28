@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 
 export default function AdminPage() {
   // États pour la sécurité
@@ -28,8 +28,14 @@ export default function AdminPage() {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        const base64String = (reader.result as string).split(',')[1];
-        setImage(base64String);
+        const resultStr = reader.result as string;
+        // CORRECTION ICI : On s'assure que la chaîne existe avant de la donner à setImage
+        const base64String = resultStr.split(',')[1];
+        if (base64String) {
+          setImage(base64String);
+        } else {
+          setImage(null);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -86,7 +92,7 @@ export default function AdminPage() {
             placeholder="Entrez votre mot de passe"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={{ padding: '12px', borderRadius: '5px', border: '1px solid #ccc', width: '250px' }}
+            style={{ padding: '12px', borderRadius: '5px', border: '1px solid #ccc', width: '250px', color: '#000' }}
           />
           <button 
             onClick={checkPassword}
