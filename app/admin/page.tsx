@@ -1,3 +1,28 @@
+// Ajoutez cet état en haut de votre composant AdminPage
+const [password, setPassword] = useState('');
+const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+const checkPassword = () => {
+  if (password === process.env.NEXT_PUBLIC_ADMIN_PASSWORD) {
+    setIsAuthenticated(true);
+  } else {
+    alert("Accès refusé");
+  }
+};
+
+if (!isAuthenticated) {
+  return (
+    <div style={{ padding: '50px', textAlign: 'center' }}>
+      <h2>Accès Réservé - Héritage Bijoux</h2>
+      <input 
+        type="password" 
+        onChange={(e) => setPassword(e.target.value)} 
+        placeholder="Mot de passe"
+      />
+      <button onClick={checkPassword}>Entrer</button>
+    </div>
+  );
+}
 'use client';
 
 import { useState } from 'react';
