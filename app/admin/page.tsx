@@ -1,11 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
+import { 
+  ChartBarIcon, 
+  PlusCircleIcon, 
+  PhotoIcon,
+  CheckCircleIcon
+} from '@heroicons/react/24/outline';
 
 export default function AdminPage() {
-  // États pour la sécurité
+  // --- ÉTATS ---
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'create'>('dashboard');
 
   // États pour l'IA et l'image
   const [image, setImage] = useState<string | null>(null);
@@ -13,7 +20,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
-  // 1. Vérification du mot de passe
+  // --- LOGIQUE ---
+
   const checkPassword = () => {
     if (password === process.env.NEXT_PUBLIC_ADMIN_PASSWORD) {
       setIsAuthenticated(true);
@@ -22,26 +30,22 @@ export default function AdminPage() {
     }
   };
 
-  // 2. Gestion de la photo (Conversion en Base64 pour Gemini)
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
         const resultStr = reader.result as string;
-        // CORRECTION ICI : On s'assure que la chaîne existe avant de la donner à setImage
         const base64String = resultStr.split(',')[1];
         if (base64String) {
           setImage(base64String);
-        } else {
-          setImage(null);
+          setResult(null); // Reset le résultat si on change d'image
         }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // 3. Appel à l'API Gemini (Cerveau)
   const analyzeJewelry = async () => {
     if (!image) return;
     setLoading(true);
@@ -60,7 +64,6 @@ export default function AdminPage() {
     }
   };
 
-  // 4. Envoi vers Shopify (Bras)
   const publishToShopify = async () => {
     setPublishing(true);
     try {
@@ -73,6 +76,7 @@ export default function AdminPage() {
         alert('Félicitations ! Le bijou est maintenant en brouillon sur votre Shopify.');
         setResult(null);
         setImage(null);
+        setActiveTab('dashboard'); // Retour au dashboard après succès
       }
     } catch (error) {
       alert("Erreur lors de la création sur Shopify.");
@@ -81,22 +85,23 @@ export default function AdminPage() {
     }
   };
 
-  // --- INTERFACE DE CONNEXION ---
+  // --- RENDU : CONNEXION ---
   if (!isAuthenticated) {
     return (
-      <div style={{ padding: '50px', textAlign: 'center', fontFamily: 'sans-serif', backgroundColor: '#f9f9f9', minHeight: '100vh' }}>
-        <h1 style={{ color: '#d4af37' }}>Héritage Bijoux - Accès Privé</h1>
-        <div style={{ marginTop: '20px' }}>
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 px-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl border border-gray-100 text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Héritage Bijoux</h1>
+          <p className="text-gray-500 mb-8 font-medium">Espace Administration</p>
           <input 
             type="password" 
-            placeholder="Entrez votre mot de passe"
+            placeholder="Mot de passe secret"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={{ padding: '12px', borderRadius: '5px', border: '1px solid #ccc', width: '250px', color: '#000' }}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-amber-500 outline-none mb-4 text-black"
           />
           <button 
             onClick={checkPassword}
-            style={{ padding: '12px 25px', marginLeft: '10px', backgroundColor: '#000', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+            className="w-full bg-black text-white py-3 rounded-xl font-bold hover:bg-gray-800 transition-all"
           >
             Se connecter
           </button>
@@ -105,55 +110,164 @@ export default function AdminPage() {
     );
   }
 
-  // --- INTERFACE D'EXPERTISE (UNE FOIS CONNECTÉ) ---
+  // --- RENDU : DASHBOARD PRINCIPAL ---
   return (
-    <div style={{ padding: '20px', maxWidth: '600px', margin: 'auto', fontFamily: 'sans-serif' }}>
-      <header style={{ borderBottom: '2px solid #d4af37', marginBottom: '30px', textAlign: 'center' }}>
-        <h1 style={{ marginBottom: '10px' }}>Expertise IA - Héritage Bijoux</h1>
-      </header>
-      
-      <section style={{ marginBottom: '30px', textAlign: 'center' }}>
-        <label style={{ display: 'block', marginBottom: '15px', fontWeight: 'bold' }}>
-          Prendre une photo du bijou (Face, Profil ou Poinçon)
-        </label>
-        <input 
-          type="file" 
-          accept="image/*" 
-          capture="environment" 
-          onChange={handleImageChange}
-          style={{ marginBottom: '20px' }}
-        />
-        
-        {image && !result && (
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Sidebar Navigation */}
+      <div className="w-20 md:w-64 bg-white border-r border-gray-200 flex flex-col">
+        <div className="p-6 font-bold text-amber-600 hidden md:block text-xl border-b border-gray-50">
+          HERITAGE
+        </div>
+        <nav className="flex-1 p-4 space-y-2">
           <button 
-            onClick={analyzeJewelry} 
-            disabled={loading}
-            style={{ width: '100%', padding: '15px', backgroundColor: '#d4af37', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
+            onClick={() => setActiveTab('dashboard')}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-amber-50 text-amber-700' : 'text-gray-500 hover:bg-gray-100'}`}
           >
-            {loading ? 'Analyse par Gemini en cours...' : 'Lancer l\'expertise IA'}
+            <ChartBarIcon className="w-6 h-6" />
+            <span className="hidden md:block font-semibold">Dashboard</span>
           </button>
-        )}
-      </section>
+          <button 
+            onClick={() => setActiveTab('create')}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${activeTab === 'create' ? 'bg-amber-50 text-amber-700' : 'text-gray-500 hover:bg-gray-100'}`}
+          >
+            <PlusCircleIcon className="w-6 h-6" />
+            <span className="hidden md:block font-semibold">Créer une annonce</span>
+          </button>
+        </nav>
+      </div>
 
-      {result && (
-        <section style={{ background: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
-          <h2 style={{ borderBottom: '1px solid #eee', paddingBottom: '10px' }}>Résultat de l'analyse</h2>
-          <p><strong>Titre suggéré :</strong> {result.title}</p>
-          <p><strong>Prix estimé :</strong> {result.price} CHF</p>
-          <div style={{ backgroundColor: '#f4f4f4', padding: '15px', borderRadius: '5px', marginTop: '10px' }}>
-            <p style={{ fontWeight: 'bold', marginBottom: '5px' }}>Description générée :</p>
-            <div dangerouslySetInnerHTML={{ __html: result.description }} />
-          </div>
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-8 max-w-5xl mx-auto">
           
-          <button 
-            onClick={publishToShopify} 
-            disabled={publishing}
-            style={{ width: '100%', marginTop: '20px', padding: '15px', backgroundColor: '#000', color: 'gold', border: 'none', borderRadius: '8px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}
-          >
-            {publishing ? 'Publication...' : 'Confirmer et Publier sur Shopify'}
-          </button>
-        </section>
-      )}
+          {/* VUE DASHBOARD */}
+          {activeTab === 'dashboard' && (
+            <div className="space-y-8 animate-in fade-in duration-500">
+              <header>
+                <h2 className="text-3xl font-bold text-gray-900">Tableau de bord</h2>
+                <p className="text-gray-500">Aperçu de votre activité aujourd'hui.</p>
+              </header>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <p className="text-gray-500 text-sm font-medium">Annonces créées</p>
+                  <p className="text-3xl font-bold mt-1 text-black">24</p>
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <p className="text-gray-500 text-sm font-medium">Analyses IA</p>
+                  <p className="text-3xl font-bold mt-1 text-black">152</p>
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <p className="text-gray-500 text-sm font-medium">Temps gagné</p>
+                  <p className="text-3xl font-bold mt-1 text-amber-600">~12h</p>
+                </div>
+              </div>
+
+              <div className="bg-amber-600 rounded-2xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-lg shadow-amber-200">
+                <div>
+                  <h3 className="text-xl font-bold mb-2">Prêt pour une nouvelle vente ?</h3>
+                  <p className="text-amber-100">Prenez en photo votre bijou et laissez l'IA s'occuper de tout.</p>
+                </div>
+                <button 
+                  onClick={() => setActiveTab('create')}
+                  className="bg-white text-amber-700 px-6 py-3 rounded-xl font-bold hover:bg-amber-50 transition-colors whitespace-nowrap"
+                >
+                  Créer une annonce à partir de photos
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* VUE CRÉATION IA */}
+          {activeTab === 'create' && (
+            <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+              <header className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-3xl font-bold text-gray-900">Expertise IA</h2>
+                  <p className="text-gray-500">Générez une annonce complète en quelques secondes.</p>
+                </div>
+                <button 
+                  onClick={() => setActiveTab('dashboard')}
+                  className="text-gray-500 hover:text-black font-medium"
+                >
+                  Annuler
+                </button>
+              </header>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Zone Photo */}
+                <div className="bg-white p-8 rounded-3xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-center">
+                  {!image ? (
+                    <>
+                      <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-4">
+                        <PhotoIcon className="w-8 h-8 text-amber-600" />
+                      </div>
+                      <p className="text-gray-900 font-bold mb-1">Prendre ou choisir une photo</p>
+                      <p className="text-gray-400 text-sm mb-6">Face, profil ou détails (poinçon)</p>
+                      <label className="bg-black text-white px-6 py-3 rounded-xl cursor-pointer hover:bg-gray-800 transition-all font-bold">
+                        Sélectionner l'image
+                        <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} className="hidden" />
+                      </label>
+                    </>
+                  ) : (
+                    <div className="relative w-full">
+                      <img 
+                        src={`data:image/jpeg;base64,${image}`} 
+                        alt="Preview" 
+                        className="w-full h-auto rounded-xl shadow-lg border border-gray-100" 
+                      />
+                      {!result && (
+                        <button 
+                          onClick={analyzeJewelry} 
+                          disabled={loading}
+                          className="mt-6 w-full bg-amber-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-amber-700 disabled:bg-gray-300 shadow-md transition-all"
+                        >
+                          {loading ? 'Analyse par Gemini...' : 'Lancer l\'expertise IA'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Zone Résultat IA */}
+                <div className="space-y-6">
+                  {result ? (
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4 animate-in fade-in zoom-in duration-300">
+                      <div className="flex items-center gap-2 text-green-600 font-bold mb-4">
+                        <CheckCircleIcon className="w-6 h-6" />
+                        Expertise terminée
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Titre suggéré</label>
+                        <p className="text-xl font-bold text-gray-900">{result.title}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Prix estimé</label>
+                        <p className="text-2xl font-bold text-amber-600">{result.price} CHF</p>
+                      </div>
+                      <div className="p-4 bg-gray-50 rounded-xl">
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Description</label>
+                        <div className="text-gray-700 text-sm prose" dangerouslySetInnerHTML={{ __html: result.description }} />
+                      </div>
+                      <button 
+                        onClick={publishToShopify} 
+                        disabled={publishing}
+                        className="w-full bg-black text-amber-400 py-4 rounded-xl font-bold text-lg hover:bg-gray-900 transition-all flex items-center justify-center gap-3 shadow-lg"
+                      >
+                        {publishing ? 'Publication...' : '🚀 Publier sur Shopify'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-gray-100/50 rounded-3xl border border-gray-100 italic text-gray-400">
+                      {loading ? "L'intelligence artificielle analyse les détails de votre bijou..." : "Les résultats de l'analyse apparaîtront ici après l'envoi de la photo."}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
