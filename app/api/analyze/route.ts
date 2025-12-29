@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function POST(req: Request) {
-  console.log("--- DÉBUT DE L'ANALYSE GEMINI MULTI-PHOTOS ---");
+  console.log("--- DÉBUT DE L'ANALYSE GEMINI MULTI-PHOTOS (MODE STRICT) ---");
 
   try {
     // 1. Vérification de la clé API
@@ -19,31 +19,37 @@ export async function POST(req: Request) {
     }
     console.log(`${imagesBase64.length} image(s) reçue(s), envoi à Gemini...`);
 
-    // 3. Initialisation de Gemini 2.0 Flash (Version 2025)
+    // 3. Initialisation de Gemini 2.0 Flash
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash", // Modèle le plus rapide et précis en 2025
+      model: "gemini-2.0-flash", 
+      // Cette option force Gemini à répondre en JSON, ce qui évite beaucoup d'erreurs
       generationConfig: { responseMimeType: "application/json" } 
     });
 
-    // 4. Prompt d'expertise "Conservateur"
-    const prompt = `Tu es l'expert joaillier principal de "Héritage Bijoux" en Suisse. 
-    Analyse ces photos (vue d'ensemble, profil, poinçon) pour identifier le bijou.
+    // 4. LE NOUVEAU PROMPT "STRICT & MATHÉMATIQUE"
+    const prompt = `Tu es l'expert joaillier principal de "Héritage Bijoux" en Suisse.
+    Analyse ces photos. Cherche activement des indices techniques : poinçons, et surtout si le bijou est posé sur une BALANCE (pour le poids) ou à côté d'une RÈGLE.
     
-    CONSIGNE DE PRIX : Donne une estimation "boutique en ligne" RÉALISTE et CONSERVATRICE en CHF. 
-    Ne te base pas sur des prix d'enchères records. Si un doute subsiste sur la pureté ou l'état, vise la fourchette basse.
+    ESTIMATION DU PRIX (RÈGLES DE CALCUL STRICTES) :
+    1. CORRECTION : Tes estimations précédentes étaient trop hautes de 20%. Applique une baisse immédiate.
+    2. MÉTHODE : Ne devine pas la "valeur artistique". Calcule la "Valeur Métal" + Marge Commerciale.
+       - Base : Poids estimé (ou lu sur balance) x Cours de l'or 18k (env. 50 CHF/g).
+       - Marge : Ajoute maximum 30% à 50% pour le travail et l'époque.
+       - Exemple : Une bague de 5g = 250 CHF d'or -> Prix boutique env. 350-400 CHF (pas 800 !).
+    3. EXCEPTION : Si c'est une grande marque signée (Cartier, Chopard) ou une pierre > 1 carat, tu peux monter le prix.
     
     RETOURNE UNIQUEMENT UN OBJET JSON :
     {
-      "title": "Nom luxueux et court du bijou",
-      "description": "Description élégante (métal, pierres, époque, état) mentionnant la livraison sécurisée par la Poste Suisse",
-      "price": 1200,
-      "tags": ["or", "vintage", "expertisé", "suisse", "ancien"]
+      "title": "Titre court et précis (ex: Bague Or 750 Saphir)",
+      "description": "Description commerciale vendeuse pour la Suisse. Mentionne l'état, les poinçons visibles et la livraison sécurisée par la Poste Suisse.",
+      "price": 350,
+      "tags": ["or 750", "vintage", "expertisé", "bague", "occasion"]
     }`;
 
-    // 5. Préparation des contenus (Texte + toutes les Images)
+    // 5. Préparation des contenus (Texte + Images)
     const imageParts = imagesBase64.map((base64: string) => ({
-      inlineData: { data: base64, mimeType: "image/jpeg" } // Format d'image standard
+      inlineData: { data: base64, mimeType: "image/jpeg" }
     }));
 
     // 6. Appel à l'IA
@@ -53,22 +59,24 @@ export async function POST(req: Request) {
     // 7. Nettoyage et validation du JSON
     let cleanJson;
     try {
+      // On nettoie au cas où l'IA rajoute du texte Markdown ```json ... ```
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       cleanJson = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
     } catch (parseError) {
       console.error("ERREUR de lecture du JSON IA:", responseText);
-      return new Response(JSON.stringify({ error: "Format JSON IA invalide." }), { status: 500 });
+      return new Response(JSON.stringify({ error: "L'IA n'a pas renvoyé un format valide. Réessayez." }), { status: 500 });
     }
 
-    console.log("--- ANALYSE TERMINÉE : ", cleanJson.title, " ---");
+    console.log("--- ANALYSE TERMINÉE : ", cleanJson.title, " - PRIX : ", cleanJson.price, "CHF ---");
+    
     return new Response(JSON.stringify(cleanJson), { 
       headers: { "Content-Type": "application/json" } 
     });
 
   } catch (error: any) {
-    console.error("ERREUR CRITIQUE :", error.message);
+    console.error("ERREUR CRITIQUE DANS L'API:", error.message);
     return new Response(JSON.stringify({ 
-      error: "Erreur interne du serveur",
+      error: "Erreur interne du serveur lors de l'analyse.",
       details: error.message 
     }), { status: 500 });
   }
