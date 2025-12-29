@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   ChartBarIcon, 
   PlusCircleIcon, 
   PhotoIcon,
   CheckCircleIcon,
   TrashIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  CameraIcon
 } from '@heroicons/react/24/outline';
 
 export default function AdminPage() {
@@ -19,11 +20,9 @@ export default function AdminPage() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  
-  // État pour la barre de progression (0 à 100)
   const [progress, setProgress] = useState(0);
 
-  // Correction TypeScript pour le mot de passe
+  // --- 1. SÉCURITÉ ---
   const checkPassword = () => {
     if (password === process.env.NEXT_PUBLIC_ADMIN_PASSWORD) {
       setIsAuthenticated(true);
@@ -32,28 +31,56 @@ export default function AdminPage() {
     }
   };
 
-  // --- GESTION DES IMAGES (Correction de l'erreur Vercel) ---
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // --- 2. COMPRESSION D'IMAGE (Anti-Erreur 413) ---
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1024; // Largeur optimale pour Gemini
+          let width = img.width;
+          let height = img.height;
+
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          // Encodage propre en JPEG 70% pour réduire le poids drastiquement
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+          resolve(compressedBase64);
+        };
+      };
+    });
+  };
+
+  // --- 3. GESTION DES ENTRÉES PHOTOS ---
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const readers = Array.from(files).map((file) => {
-        return new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const resultStr = reader.result as string;
-            // Correction de l'erreur Vercel : on assure que c'est une string
-            const base64 = resultStr.split(',')[1] || ""; 
-            resolve(base64);
-          };
-          reader.readAsDataURL(file);
-        });
-      });
-
-      Promise.all(readers).then((base64Strings) => {
-        setImages((prev) => [...prev, ...base64Strings]);
+      setLoading(true);
+      setProgress(5); // Début de compression
+      
+      try {
+        const compressedPromises = Array.from(files).map(file => compressImage(file));
+        const newImages = await Promise.all(compressedPromises);
+        
+        setImages((prev) => [...prev, ...newImages]);
         setResult(null);
         setProgress(0);
-      });
+      } catch (error) {
+        alert("Erreur lors du traitement des images.");
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -62,16 +89,21 @@ export default function AdminPage() {
     setResult(null);
   };
 
-  // --- ANALYSE AVEC BARRE DE PROGRESSION ---
+  const clearSelection = () => {
+    setImages([]);
+    setResult(null);
+    setProgress(0);
+  };
+
+  // --- 4. ANALYSE IA ---
   const analyzeJewelry = async () => {
     if (images.length === 0) return;
     setLoading(true);
-    setProgress(10); // Début de l'analyse
+    setProgress(15);
 
-    // Simulation de progression fluide pendant l'appel API
     const interval = setInterval(() => {
-      setProgress((prev) => (prev < 90 ? prev + 5 : prev));
-    }, 400);
+      setProgress((prev) => (prev < 90 ? prev + 3 : prev));
+    }, 500);
 
     try {
       const res = await fetch('/api/analyze', {
@@ -82,10 +114,10 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       
-      setProgress(100); // Analyse terminée
+      setProgress(100);
       setResult(data);
     } catch (error: any) {
-      alert("Erreur : " + error.message);
+      alert("Erreur d'analyse : " + error.message);
       setProgress(0);
     } finally {
       clearInterval(interval);
@@ -93,6 +125,7 @@ export default function AdminPage() {
     }
   };
 
+  // --- 5. PUBLICATION SHOPIFY ---
   const publishToShopify = async () => {
     setPublishing(true);
     try {
@@ -102,19 +135,19 @@ export default function AdminPage() {
         body: JSON.stringify(result),
       });
       if (res.ok) {
-        alert('Produit créé avec succès !');
-        setResult(null);
-        setImages([]);
+        alert('Bijou créé avec succès dans Shopify !');
+        clearSelection();
         setActiveTab('dashboard');
+      } else {
+        throw new Error("Erreur serveur Shopify");
       }
-    } catch (error) {
-      alert("Erreur Shopify.");
+    } catch (error: any) {
+      alert(error.message);
     } finally {
       setPublishing(false);
     }
   };
 
-  // Rendu de connexion (inchangé)
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-stone-50 px-4">
@@ -163,7 +196,7 @@ export default function AdminPage() {
                <div className="bg-stone-900 rounded-[2rem] p-10 text-white flex flex-col md:flex-row items-center justify-between gap-10 shadow-2xl">
                 <div>
                   <h3 className="text-2xl font-bold mb-3 text-amber-400">Prêt pour une expertise ?</h3>
-                  <p className="text-stone-300 text-lg">Plusieurs angles de photos améliorent la précision du prix.</p>
+                  <p className="text-stone-300 text-lg">La compression est automatique pour garantir un envoi rapide.</p>
                 </div>
                 <button onClick={() => setActiveTab('create')} className="bg-amber-500 text-stone-900 px-10 py-5 rounded-2xl font-black hover:bg-amber-400 transition-transform hover:scale-105 shadow-xl whitespace-nowrap">
                   Commencer maintenant
@@ -176,8 +209,13 @@ export default function AdminPage() {
             <div className="space-y-10 animate-in slide-in-from-bottom-10 duration-700">
               <header className="flex items-end justify-between border-b border-stone-200 pb-6">
                 <div>
-                  <h2 className="text-4xl font-serif text-stone-900 italic">Expertise IA Multi-Photos</h2>
+                  <h2 className="text-4xl font-serif text-stone-900 italic">Expertise IA</h2>
                 </div>
+                {images.length > 0 && (
+                  <button onClick={clearSelection} className="text-stone-400 hover:text-red-500 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                    <TrashIcon className="w-4 h-4" /> Effacer tout
+                  </button>
+                )}
               </header>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -185,11 +223,10 @@ export default function AdminPage() {
                 <div className="space-y-6">
                   <div className="bg-white p-10 rounded-[2.5rem] border-2 border-dashed border-stone-200 shadow-sm relative overflow-hidden">
                     
-                    {/* BARRE DE PROGRESSION VISUELLE */}
                     {loading && (
                       <div className="absolute top-0 left-0 w-full h-2 bg-stone-100">
                         <div 
-                          className="h-full bg-amber-500 transition-all duration-500 ease-out shadow-[0_0_10px_rgba(245,158,11,0.5)]"
+                          className="h-full bg-amber-500 transition-all duration-500 ease-out"
                           style={{ width: `${progress}%` }}
                         />
                       </div>
@@ -198,15 +235,24 @@ export default function AdminPage() {
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
                       {images.map((img, index) => (
                         <div key={index} className="relative group aspect-square">
-                          <img src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover rounded-2xl border border-stone-100 shadow-sm" alt="bijou" />
+                          <img src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover rounded-2xl border border-stone-100 shadow-sm" alt="preview" />
                           <button onClick={() => removeImage(index)} className="absolute top-2 right-2 bg-white/90 text-red-500 p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all scale-75 hover:scale-100">
                             <TrashIcon className="w-5 h-5" />
                           </button>
                         </div>
                       ))}
+
+                      {/* BOUTON CAMÉRA DIRECTE */}
                       <label className="border-2 border-dashed border-stone-200 rounded-2xl aspect-square flex flex-col items-center justify-center cursor-pointer hover:bg-stone-50 transition-all group">
-                        <PhotoIcon className="w-10 h-10 text-stone-300 group-hover:text-amber-500 transition-colors" />
-                        <span className="text-[10px] uppercase tracking-widest font-bold text-stone-400 mt-3">Ajouter</span>
+                        <CameraIcon className="w-8 h-8 text-stone-300 group-hover:text-amber-500 transition-colors" />
+                        <span className="text-[9px] uppercase tracking-widest font-bold text-stone-400 mt-2">Caméra</span>
+                        <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} className="hidden" />
+                      </label>
+
+                      {/* BOUTON GALERIE MULTIPLE */}
+                      <label className="border-2 border-dashed border-stone-200 rounded-2xl aspect-square flex flex-col items-center justify-center cursor-pointer hover:bg-stone-50 transition-all group">
+                        <PhotoIcon className="w-8 h-8 text-stone-300 group-hover:text-amber-500 transition-colors" />
+                        <span className="text-[9px] uppercase tracking-widest font-bold text-stone-400 mt-2">Galerie</span>
                         <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" />
                       </label>
                     </div>
@@ -214,7 +260,7 @@ export default function AdminPage() {
                     {images.length > 0 && !result && (
                       <button onClick={analyzeJewelry} disabled={loading} className="w-full bg-amber-600 text-white py-5 rounded-[1.5rem] font-bold text-lg hover:bg-amber-700 disabled:bg-stone-200 transition-all shadow-xl flex items-center justify-center gap-3">
                         {loading ? <ArrowPathIcon className="w-6 h-6 animate-spin" /> : null}
-                        {loading ? `Expertise en cours (${progress}%)...` : `Analyser ${images.length} photo(s)`}
+                        {loading ? `Expertise (${progress}%)...` : `Lancer l'expertise (${images.length})`}
                       </button>
                     )}
                   </div>
@@ -223,42 +269,29 @@ export default function AdminPage() {
                 {/* Section Résultat */}
                 <div className="space-y-6">
                   {result ? (
-                    <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-amber-100 space-y-6">
+                    <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-amber-100 space-y-6 animate-in fade-in zoom-in duration-500">
                       <div className="flex items-center gap-3 text-emerald-600 font-bold bg-emerald-50 w-fit px-4 py-2 rounded-full text-sm">
                         <CheckCircleIcon className="w-5 h-5" />
-                        Analyse terminée
+                        Expertise terminée
                       </div>
                       
                       <div className="space-y-1">
-                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Titre du bijou</label>
+                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Titre suggéré</label>
                         <input className="w-full text-2xl font-serif text-stone-900 border-b border-stone-100 focus:border-amber-500 outline-none pb-2 bg-transparent" value={result.title} onChange={(e) => setResult({...result, title: e.target.value})} />
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Estimation (CHF)</label>
+                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Prix de vente (CHF)</label>
                         <input type="number" className="w-full text-3xl font-black text-amber-600 border-b border-stone-100 focus:border-amber-500 outline-none pb-2 bg-transparent" value={result.price} onChange={(e) => setResult({...result, price: parseInt(e.target.value)})} />
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Description Expert</label>
-                        <textarea className="w-full bg-stone-50 p-6 rounded-2xl text-stone-700 text-sm outline-none min-h-[200px] leading-relaxed border border-stone-100" value={result.description.replace(/<[^>]*>?/gm, '')} onChange={(e) => setResult({...result, description: e.target.value})} />
+                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Description Luxueuse</label>
+                        <textarea className="w-full bg-stone-50 p-6 rounded-2xl text-stone-700 text-sm outline-none min-h-[180px] leading-relaxed border border-stone-100" value={result.description} onChange={(e) => setResult({...result, description: e.target.value})} />
                       </div>
 
                       <button onClick={publishToShopify} disabled={publishing} className="w-full bg-stone-900 text-amber-400 py-6 rounded-[1.5rem] font-black text-xl hover:bg-stone-800 transition-all shadow-2xl hover:scale-[1.02] active:scale-95">
-                        {publishing ? 'Transmission...' : 'Publier sur le site'}
+                        {publishing ? 'Publication...' : 'Mettre en vente'}
                       </button>
                     </div>
                   ) : (
-                    <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-center p-12 bg-stone-100/30 rounded-[2.5rem] border border-stone-100 italic text-stone-400">
-                      {loading ? "Gemini 2.0 identifie les métaux et poinçons..." : "Sélectionnez les photos pour voir l'expertise ici."}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
