@@ -1,72 +1,72 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function POST(req: Request) {
-  console.log("--- DÉBUT DE L'ANALYSE GEMINI ---");
+  console.log("--- DÉBUT DE L'ANALYSE GEMINI MULTI-PHOTOS ---");
 
   try {
     // 1. Vérification de la clé API
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) {
-      console.error("ERREUR: La variable GOOGLE_GENERATIVE_AI_API_KEY est manquante dans Vercel.");
-      return new Response(JSON.stringify({ error: "Configuration serveur incomplète (Clé API manquante)." }), { status: 500 });
+      console.error("ERREUR: La variable GOOGLE_GENERATIVE_AI_API_KEY est manquante.");
+      return new Response(JSON.stringify({ error: "Clé API manquante." }), { status: 500 });
     }
 
-    // 2. Vérification des données entrantes
-    const { imageBase64 } = await req.json();
-    if (!imageBase64) {
-      console.error("ERREUR: Aucune image reçue dans la requête.");
-      return new Response(JSON.stringify({ error: "Aucune image fournie." }), { status: 400 });
+    // 2. Vérification des données (Support multi-photos)
+    const { imagesBase64 } = await req.json();
+    if (!imagesBase64 || !Array.isArray(imagesBase64) || imagesBase64.length === 0) {
+      console.error("ERREUR: Aucun tableau d'images reçu.");
+      return new Response(JSON.stringify({ error: "Veuillez fournir au moins une image." }), { status: 400 });
     }
-    console.log("Image reçue (Base64), envoi à Gemini...");
+    console.log(`${imagesBase64.length} image(s) reçue(s), envoi à Gemini...`);
 
     // 3. Initialisation de Gemini 2.0 Flash (Version 2025)
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash",
-      generationConfig: { responseMimeType: "application/json" } // Force le format JSON
+      model: "gemini-2.0-flash", // Modèle le plus rapide et précis en 2025
+      generationConfig: { responseMimeType: "application/json" } 
     });
 
-    const prompt = `Tu es un expert en haute joaillerie pour Héritage Bijoux en Suisse. 
-    Analyse cette photo et génère une fiche produit luxueuse.
-    RETOURNE UNIQUEMENT UN OBJET JSON avec ces champs :
+    // 4. Prompt d'expertise "Conservateur"
+    const prompt = `Tu es l'expert joaillier principal de "Héritage Bijoux" en Suisse. 
+    Analyse ces photos (vue d'ensemble, profil, poinçon) pour identifier le bijou.
+    
+    CONSIGNE DE PRIX : Donne une estimation "boutique en ligne" RÉALISTE et CONSERVATRICE en CHF. 
+    Ne te base pas sur des prix d'enchères records. Si un doute subsiste sur la pureté ou l'état, vise la fourchette basse.
+    
+    RETOURNE UNIQUEMENT UN OBJET JSON :
     {
-      "title": "Nom du bijou",
-      "description": "Description détaillée avec métal, pierres, époque et mention de La Poste Suisse",
-      "price": 1250,
-      "tags": ["or", "vintage", "expertisé", "suisse"]
+      "title": "Nom luxueux et court du bijou",
+      "description": "Description élégante (métal, pierres, époque, état) mentionnant la livraison sécurisée par la Poste Suisse",
+      "price": 1200,
+      "tags": ["or", "vintage", "expertisé", "suisse", "ancien"]
     }`;
 
-    // 4. Appel à l'IA
-    const result = await model.generateContent([
-      prompt,
-      { inlineData: { data: imageBase64, mimeType: "image/jpeg" } }
-    ]);
+    // 5. Préparation des contenus (Texte + toutes les Images)
+    const imageParts = imagesBase64.map((base64: string) => ({
+      inlineData: { data: base64, mimeType: "image/jpeg" } // Format d'image standard
+    }));
 
+    // 6. Appel à l'IA
+    const result = await model.generateContent([prompt, ...imageParts]);
     const responseText = result.response.text();
-    console.log("Réponse brute de Gemini reçue.");
 
-    // 5. Nettoyage et validation du JSON
+    // 7. Nettoyage et validation du JSON
     let cleanJson;
     try {
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       cleanJson = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
-      console.log("JSON analysé avec succès :", cleanJson.title);
     } catch (parseError) {
-      console.error("ERREUR de lecture du JSON produit par l'IA:", responseText);
-      return new Response(JSON.stringify({ error: "L'IA a produit un format incorrect." }), { status: 500 });
+      console.error("ERREUR de lecture du JSON IA:", responseText);
+      return new Response(JSON.stringify({ error: "Format JSON IA invalide." }), { status: 500 });
     }
 
-    console.log("--- ANALYSE TERMINÉE AVEC SUCCÈS ---");
+    console.log("--- ANALYSE TERMINÉE : ", cleanJson.title, " ---");
     return new Response(JSON.stringify(cleanJson), { 
       headers: { "Content-Type": "application/json" } 
     });
 
   } catch (error: any) {
-    // Le côté "Bavard" : on affiche tout dans les logs Vercel
-    console.error("ERREUR CRITIQUE DANS LA ROUTE API :");
-    console.error("Message :", error.message);
-    console.error("Stack :", error.stack);
-
+    console.error("ERREUR CRITIQUE :", error.message);
     return new Response(JSON.stringify({ 
       error: "Erreur interne du serveur",
       details: error.message 
