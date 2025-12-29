@@ -5,7 +5,8 @@ import {
   ChartBarIcon, 
   PlusCircleIcon, 
   PhotoIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 
 export default function AdminPage() {
@@ -14,8 +15,8 @@ export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'create'>('dashboard');
 
-  // États pour l'IA et l'image
-  const [image, setImage] = useState<string | null>(null);
+  // États pour l'IA et les images (Tableau de chaînes pour le multi-photos)
+  const [images, setImages] = useState<string[]>([]);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -30,35 +31,48 @@ export default function AdminPage() {
     }
   };
 
+  // Gestion de plusieurs images
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const resultStr = reader.result as string;
-        const base64String = resultStr.split(',')[1];
-        if (base64String) {
-          setImage(base64String);
-          setResult(null); // Reset le résultat si on change d'image
-        }
-      };
-      reader.readAsDataURL(file);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const readers = Array.from(files).map((file) => {
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            resolve(base64);
+          };
+          reader.readAsDataURL(file);
+        });
+      });
+
+      Promise.all(readers).then((base64Strings) => {
+        setImages((prev) => [...prev, ...base64Strings]);
+        setResult(null); // Reset le résultat si on ajoute des photos
+      });
     }
   };
 
+  const removeImage = (index: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== index));
+    setResult(null);
+  };
+
   const analyzeJewelry = async () => {
-    if (!image) return;
+    if (images.length === 0) return;
     setLoading(true);
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: image }),
+        // Envoi du tableau d'images à la route API mise à jour
+        body: JSON.stringify({ imagesBase64: images }),
       });
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       setResult(data);
-    } catch (error) {
-      alert("Erreur lors de l'analyse IA.");
+    } catch (error: any) {
+      alert("Erreur lors de l'analyse : " + error.message);
     } finally {
       setLoading(false);
     }
@@ -73,10 +87,10 @@ export default function AdminPage() {
         body: JSON.stringify(result),
       });
       if (res.ok) {
-        alert('Félicitations ! Le bijou est maintenant en brouillon sur votre Shopify.');
+        alert('Félicitations ! Le bijou est maintenant en brouillon sur Shopify.');
         setResult(null);
-        setImage(null);
-        setActiveTab('dashboard'); // Retour au dashboard après succès
+        setImages([]);
+        setActiveTab('dashboard');
       }
     } catch (error) {
       alert("Erreur lors de la création sur Shopify.");
@@ -110,7 +124,6 @@ export default function AdminPage() {
     );
   }
 
-  // --- RENDU : DASHBOARD PRINCIPAL ---
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar Navigation */}
@@ -136,16 +149,14 @@ export default function AdminPage() {
         </nav>
       </div>
 
-      {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-5xl mx-auto">
-          
           {/* VUE DASHBOARD */}
           {activeTab === 'dashboard' && (
-            <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="space-y-8">
               <header>
                 <h2 className="text-3xl font-bold text-gray-900">Tableau de bord</h2>
-                <p className="text-gray-500">Aperçu de votre activité aujourd'hui.</p>
+                <p className="text-gray-500">Aperçu de votre activité.</p>
               </header>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -163,16 +174,16 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              <div className="bg-amber-600 rounded-2xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-lg shadow-amber-200">
+              <div className="bg-amber-600 rounded-2xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-lg">
                 <div>
                   <h3 className="text-xl font-bold mb-2">Prêt pour une nouvelle vente ?</h3>
-                  <p className="text-amber-100">Prenez en photo votre bijou et laissez l'IA s'occuper de tout.</p>
+                  <p className="text-amber-100">Utilisez plusieurs photos pour une expertise plus précise.</p>
                 </div>
                 <button 
                   onClick={() => setActiveTab('create')}
-                  className="bg-white text-amber-700 px-6 py-3 rounded-xl font-bold hover:bg-amber-50 transition-colors whitespace-nowrap"
+                  className="bg-white text-amber-700 px-6 py-3 rounded-xl font-bold hover:bg-amber-50 transition-colors"
                 >
-                  Créer une annonce à partir de photos
+                  Ajouter un bijou
                 </button>
               </div>
             </div>
@@ -180,86 +191,95 @@ export default function AdminPage() {
 
           {/* VUE CRÉATION IA */}
           {activeTab === 'create' && (
-            <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+            <div className="space-y-8">
               <header className="flex items-center justify-between">
                 <div>
                   <h2 className="text-3xl font-bold text-gray-900">Expertise IA</h2>
-                  <p className="text-gray-500">Générez une annonce complète en quelques secondes.</p>
+                  <p className="text-gray-500">Plusieurs photos permettent une meilleure identification des poinçons.</p>
                 </div>
-                <button 
-                  onClick={() => setActiveTab('dashboard')}
-                  className="text-gray-500 hover:text-black font-medium"
-                >
-                  Annuler
-                </button>
               </header>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Zone Photo */}
-                <div className="bg-white p-8 rounded-3xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-center">
-                  {!image ? (
-                    <>
-                      <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-4">
-                        <PhotoIcon className="w-8 h-8 text-amber-600" />
-                      </div>
-                      <p className="text-gray-900 font-bold mb-1">Prendre ou choisir une photo</p>
-                      <p className="text-gray-400 text-sm mb-6">Face, profil ou détails (poinçon)</p>
-                      <label className="bg-black text-white px-6 py-3 rounded-xl cursor-pointer hover:bg-gray-800 transition-all font-bold">
-                        Sélectionner l'image
-                        <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} className="hidden" />
-                      </label>
-                    </>
-                  ) : (
-                    <div className="relative w-full">
-                      <img 
-                        src={`data:image/jpeg;base64,${image}`} 
-                        alt="Preview" 
-                        className="w-full h-auto rounded-xl shadow-lg border border-gray-100" 
-                      />
-                      {!result && (
+                {/* Zone Photo Multiples */}
+                <div className="bg-white p-8 rounded-3xl border-2 border-dashed border-gray-200">
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    {images.map((img, index) => (
+                      <div key={index} className="relative group">
+                        <img 
+                          src={`data:image/jpeg;base64,${img}`} 
+                          className="w-full h-32 object-cover rounded-xl border border-gray-100" 
+                          alt="preview" 
+                        />
                         <button 
-                          onClick={analyzeJewelry} 
-                          disabled={loading}
-                          className="mt-6 w-full bg-amber-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-amber-700 disabled:bg-gray-300 shadow-md transition-all"
+                          onClick={() => removeImage(index)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                          {loading ? 'Analyse par Gemini...' : 'Lancer l\'expertise IA'}
+                          <TrashIcon className="w-4 h-4" />
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    ))}
+                    <label className="border-2 border-dashed border-gray-200 rounded-xl h-32 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-all">
+                      <PlusCircleIcon className="w-8 h-8 text-gray-300" />
+                      <span className="text-xs text-gray-400 mt-2 font-bold">Ajouter</span>
+                      <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" />
+                    </label>
+                  </div>
+
+                  {images.length > 0 && !result && (
+                    <button 
+                      onClick={analyzeJewelry} 
+                      disabled={loading}
+                      className="w-full bg-amber-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-amber-700 disabled:bg-gray-300 transition-all shadow-md"
+                    >
+                      {loading ? 'Analyse par Gemini...' : `Analyser ${images.length} photo(s)`}
+                    </button>
                   )}
                 </div>
 
                 {/* Zone Résultat IA */}
                 <div className="space-y-6">
                   {result ? (
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4 animate-in fade-in zoom-in duration-300">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                       <div className="flex items-center gap-2 text-green-600 font-bold mb-4">
                         <CheckCircleIcon className="w-6 h-6" />
                         Expertise terminée
                       </div>
                       <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Titre suggéré</label>
-                        <p className="text-xl font-bold text-gray-900">{result.title}</p>
+                        <label className="text-xs font-bold text-gray-400 uppercase">Titre suggéré</label>
+                        <input 
+                          className="w-full text-xl font-bold text-gray-900 border-b border-transparent focus:border-amber-500 outline-none" 
+                          value={result.title}
+                          onChange={(e) => setResult({...result, title: e.target.value})}
+                        />
                       </div>
                       <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Prix estimé</label>
-                        <p className="text-2xl font-bold text-amber-600">{result.price} CHF</p>
+                        <label className="text-xs font-bold text-gray-400 uppercase">Prix estimé (CHF)</label>
+                        <input 
+                          type="number"
+                          className="w-full text-2xl font-bold text-amber-600 border-b border-transparent focus:border-amber-500 outline-none" 
+                          value={result.price}
+                          onChange={(e) => setResult({...result, price: parseInt(e.target.value)})}
+                        />
                       </div>
                       <div className="p-4 bg-gray-50 rounded-xl">
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Description</label>
-                        <div className="text-gray-700 text-sm prose" dangerouslySetInnerHTML={{ __html: result.description }} />
+                        <label className="text-xs font-bold text-gray-400 uppercase block mb-2">Description</label>
+                        <textarea 
+                          className="w-full bg-transparent text-gray-700 text-sm outline-none min-h-[150px]"
+                          value={result.description.replace(/<[^>]*>?/gm, '')}
+                          onChange={(e) => setResult({...result, description: e.target.value})}
+                        />
                       </div>
                       <button 
                         onClick={publishToShopify} 
                         disabled={publishing}
-                        className="w-full bg-black text-amber-400 py-4 rounded-xl font-bold text-lg hover:bg-gray-900 transition-all flex items-center justify-center gap-3 shadow-lg"
+                        className="w-full bg-black text-amber-400 py-4 rounded-xl font-bold text-lg hover:bg-gray-900 transition-all"
                       >
                         {publishing ? 'Publication...' : '🚀 Publier sur Shopify'}
                       </button>
                     </div>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-gray-100/50 rounded-3xl border border-gray-100 italic text-gray-400">
-                      {loading ? "L'intelligence artificielle analyse les détails de votre bijou..." : "Les résultats de l'analyse apparaîtront ici après l'envoi de la photo."}
+                      {loading ? "L'IA analyse vos photos sous plusieurs angles..." : "L'analyse apparaîtra ici."}
                     </div>
                   )}
                 </div>
