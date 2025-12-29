@@ -8,7 +8,8 @@ import {
   CheckCircleIcon,
   TrashIcon,
   ArrowPathIcon,
-  CameraIcon
+  CameraIcon,
+  ArrowPathRoundedSquareIcon
 } from '@heroicons/react/24/outline';
 
 export default function AdminPage() {
@@ -31,7 +32,7 @@ export default function AdminPage() {
     }
   };
 
-  // --- 2. COMPRESSION D'IMAGE (Anti-Erreur 413) ---
+  // --- 2. COMPRESSION & ROTATION (Anti-Erreur 413) ---
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -41,7 +42,7 @@ export default function AdminPage() {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 1024; // Largeur optimale pour Gemini
+          const MAX_WIDTH = 1024;
           let width = img.width;
           let height = img.height;
 
@@ -54,30 +55,45 @@ export default function AdminPage() {
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
           
-          // Encodage propre en JPEG 70% pour réduire le poids drastiquement
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
-          resolve(compressedBase64);
+          // Nettoyage de l'encodage pour Gemini
+          const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+          resolve(base64);
         };
       };
     });
   };
 
-  // --- 3. GESTION DES ENTRÉES PHOTOS ---
+  const rotateImage = (index: number) => {
+    const base64 = images[index];
+    const img = new Image();
+    img.src = `data:image/jpeg;base64,${base64}`;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.height;
+      canvas.height = img.width;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(90 * Math.PI / 180);
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+        const rotatedBase64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+        const newImages = [...images];
+        newImages[index] = rotatedBase64;
+        setImages(newImages);
+      }
+    };
+  };
+
+  // --- 3. GESTION DES PHOTOS ---
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
       setLoading(true);
-      setProgress(5); // Début de compression
-      
       try {
         const compressedPromises = Array.from(files).map(file => compressImage(file));
         const newImages = await Promise.all(compressedPromises);
-        
         setImages((prev) => [...prev, ...newImages]);
         setResult(null);
-        setProgress(0);
-      } catch (error) {
-        alert("Erreur lors du traitement des images.");
       } finally {
         setLoading(false);
       }
@@ -100,7 +116,6 @@ export default function AdminPage() {
     if (images.length === 0) return;
     setLoading(true);
     setProgress(15);
-
     const interval = setInterval(() => {
       setProgress((prev) => (prev < 90 ? prev + 3 : prev));
     }, 500);
@@ -113,11 +128,10 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      
       setProgress(100);
       setResult(data);
     } catch (error: any) {
-      alert("Erreur d'analyse : " + error.message);
+      alert("Erreur : " + error.message);
       setProgress(0);
     } finally {
       clearInterval(interval);
@@ -125,7 +139,7 @@ export default function AdminPage() {
     }
   };
 
-  // --- 5. PUBLICATION SHOPIFY ---
+  // --- 5. PUBLICATION ---
   const publishToShopify = async () => {
     setPublishing(true);
     try {
@@ -135,14 +149,10 @@ export default function AdminPage() {
         body: JSON.stringify(result),
       });
       if (res.ok) {
-        alert('Bijou créé avec succès dans Shopify !');
+        alert('Produit créé avec succès !');
         clearSelection();
         setActiveTab('dashboard');
-      } else {
-        throw new Error("Erreur serveur Shopify");
       }
-    } catch (error: any) {
-      alert(error.message);
     } finally {
       setPublishing(false);
     }
@@ -155,13 +165,11 @@ export default function AdminPage() {
           <h1 className="text-3xl font-serif text-stone-900 mb-2 italic">Héritage Bijoux</h1>
           <p className="text-stone-400 mb-8 tracking-widest uppercase text-xs">Accès Propriétaire</p>
           <input 
-            type="password" 
-            placeholder="Code secret"
-            value={password}
+            type="password" placeholder="Code secret" value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-5 py-4 rounded-2xl border border-stone-200 focus:ring-2 focus:ring-amber-500 outline-none mb-6 text-black text-center text-lg"
+            className="w-full px-5 py-4 rounded-2xl border border-stone-200 outline-none mb-6 text-black text-center text-lg"
           />
-          <button onClick={checkPassword} className="w-full bg-stone-900 text-white py-4 rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-lg">
+          <button onClick={checkPassword} className="w-full bg-stone-900 text-white py-4 rounded-2xl font-bold hover:bg-stone-800 shadow-lg">
             Déverrouiller
           </button>
         </div>
@@ -171,46 +179,37 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-stone-50 flex">
-      {/* Sidebar */}
       <div className="w-20 md:w-64 bg-white border-r border-stone-200 flex flex-col">
-        <div className="p-8 font-serif text-amber-700 hidden md:block text-2xl border-b border-stone-50 italic">
-          HB
-        </div>
+        <div className="p-8 font-serif text-amber-700 hidden md:block text-2xl italic">HB</div>
         <nav className="flex-1 p-4 space-y-3">
           <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === 'dashboard' ? 'bg-amber-50 text-amber-800' : 'text-stone-400 hover:bg-stone-50'}`}>
-            <ChartBarIcon className="w-6 h-6" />
-            <span className="hidden md:block font-bold">Tableau de bord</span>
+            <ChartBarIcon className="w-6 h-6" /> <span className="hidden md:block font-bold">Tableau de bord</span>
           </button>
           <button onClick={() => setActiveTab('create')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === 'create' ? 'bg-amber-50 text-amber-800' : 'text-stone-400 hover:bg-stone-50'}`}>
-            <PlusCircleIcon className="w-6 h-6" />
-            <span className="hidden md:block font-bold">Nouvelle expertise</span>
+            <PlusCircleIcon className="w-6 h-6" /> <span className="hidden md:block font-bold">Nouvelle expertise</span>
           </button>
         </nav>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         <div className="p-10 max-w-6xl mx-auto">
-          {activeTab === 'dashboard' && (
+          {activeTab === 'dashboard' ? (
             <div className="animate-in fade-in duration-700">
                <h2 className="text-4xl font-serif text-stone-900 mb-10">Bienvenue,</h2>
                <div className="bg-stone-900 rounded-[2rem] p-10 text-white flex flex-col md:flex-row items-center justify-between gap-10 shadow-2xl">
                 <div>
                   <h3 className="text-2xl font-bold mb-3 text-amber-400">Prêt pour une expertise ?</h3>
-                  <p className="text-stone-300 text-lg">La compression est automatique pour garantir un envoi rapide.</p>
+                  <p className="text-stone-300">La compression automatique évite l'erreur 413 sur Vercel.</p>
                 </div>
-                <button onClick={() => setActiveTab('create')} className="bg-amber-500 text-stone-900 px-10 py-5 rounded-2xl font-black hover:bg-amber-400 transition-transform hover:scale-105 shadow-xl whitespace-nowrap">
+                <button onClick={() => setActiveTab('create')} className="bg-amber-500 text-stone-900 px-10 py-5 rounded-2xl font-black">
                   Commencer maintenant
                 </button>
               </div>
             </div>
-          )}
-
-          {activeTab === 'create' && (
+          ) : (
             <div className="space-y-10 animate-in slide-in-from-bottom-10 duration-700">
               <header className="flex items-end justify-between border-b border-stone-200 pb-6">
-                <div>
-                  <h2 className="text-4xl font-serif text-stone-900 italic">Expertise IA</h2>
-                </div>
+                <h2 className="text-4xl font-serif text-stone-900 italic">Expertise IA Multi-Photos</h2>
                 {images.length > 0 && (
                   <button onClick={clearSelection} className="text-stone-400 hover:text-red-500 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
                     <TrashIcon className="w-4 h-4" /> Effacer tout
@@ -219,46 +218,36 @@ export default function AdminPage() {
               </header>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                {/* Section Photos */}
                 <div className="space-y-6">
-                  <div className="bg-white p-10 rounded-[2.5rem] border-2 border-dashed border-stone-200 shadow-sm relative overflow-hidden">
-                    
-                    {loading && (
-                      <div className="absolute top-0 left-0 w-full h-2 bg-stone-100">
-                        <div 
-                          className="h-full bg-amber-500 transition-all duration-500 ease-out"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                    )}
-
+                  <div className="bg-white p-10 rounded-[2.5rem] border-2 border-dashed border-stone-200 relative overflow-hidden">
+                    {loading && <div className="absolute top-0 left-0 w-full h-2 bg-stone-100"><div className="h-full bg-amber-500 transition-all duration-500" style={{ width: `${progress}%` }} /></div>}
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
                       {images.map((img, index) => (
-                        <div key={index} className="relative group aspect-square">
-                          <img src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover rounded-2xl border border-stone-100 shadow-sm" alt="preview" />
-                          <button onClick={() => removeImage(index)} className="absolute top-2 right-2 bg-white/90 text-red-500 p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all scale-75 hover:scale-100">
-                            <TrashIcon className="w-5 h-5" />
-                          </button>
+                        <div key={index} className="relative aspect-square group">
+                          <img src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover rounded-2xl border border-stone-100 shadow-sm" alt="bijou" />
+                          <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => rotateImage(index)} className="bg-white/90 p-2 rounded-full shadow-lg text-amber-600 hover:scale-110 transition-transform">
+                              <ArrowPathRoundedSquareIcon className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => removeImage(index)} className="bg-white/90 p-2 rounded-full shadow-lg text-red-500 hover:scale-110 transition-transform">
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       ))}
-
-                      {/* BOUTON CAMÉRA DIRECTE */}
                       <label className="border-2 border-dashed border-stone-200 rounded-2xl aspect-square flex flex-col items-center justify-center cursor-pointer hover:bg-stone-50 transition-all group">
-                        <CameraIcon className="w-8 h-8 text-stone-300 group-hover:text-amber-500 transition-colors" />
-                        <span className="text-[9px] uppercase tracking-widest font-bold text-stone-400 mt-2">Caméra</span>
+                        <CameraIcon className="w-10 h-10 text-stone-300 group-hover:text-amber-500" />
+                        <span className="text-[10px] uppercase font-bold text-stone-400 mt-2">Caméra</span>
                         <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} className="hidden" />
                       </label>
-
-                      {/* BOUTON GALERIE MULTIPLE */}
                       <label className="border-2 border-dashed border-stone-200 rounded-2xl aspect-square flex flex-col items-center justify-center cursor-pointer hover:bg-stone-50 transition-all group">
-                        <PhotoIcon className="w-8 h-8 text-stone-300 group-hover:text-amber-500 transition-colors" />
-                        <span className="text-[9px] uppercase tracking-widest font-bold text-stone-400 mt-2">Galerie</span>
+                        <PhotoIcon className="w-10 h-10 text-stone-300 group-hover:text-amber-500" />
+                        <span className="text-[10px] uppercase font-bold text-stone-400 mt-2">Galerie</span>
                         <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" />
                       </label>
                     </div>
-
                     {images.length > 0 && !result && (
-                      <button onClick={analyzeJewelry} disabled={loading} className="w-full bg-amber-600 text-white py-5 rounded-[1.5rem] font-bold text-lg hover:bg-amber-700 disabled:bg-stone-200 transition-all shadow-xl flex items-center justify-center gap-3">
+                      <button onClick={analyzeJewelry} disabled={loading} className="w-full bg-amber-600 text-white py-5 rounded-[1.5rem] font-bold text-lg hover:bg-amber-700 transition-all shadow-xl flex items-center justify-center gap-3">
                         {loading ? <ArrowPathIcon className="w-6 h-6 animate-spin" /> : null}
                         {loading ? `Expertise (${progress}%)...` : `Lancer l'expertise (${images.length})`}
                       </button>
@@ -266,32 +255,39 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Section Résultat */}
                 <div className="space-y-6">
                   {result ? (
-                    <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-amber-100 space-y-6 animate-in fade-in zoom-in duration-500">
-                      <div className="flex items-center gap-3 text-emerald-600 font-bold bg-emerald-50 w-fit px-4 py-2 rounded-full text-sm">
-                        <CheckCircleIcon className="w-5 h-5" />
-                        Expertise terminée
+                    <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-amber-100 space-y-6 animate-in zoom-in duration-500">
+                      <div className="flex items-center gap-3 text-emerald-600 font-bold bg-emerald-50 px-4 py-2 rounded-full text-sm">
+                        <CheckCircleIcon className="w-5 h-5" /> Expertise terminée
                       </div>
-                      
                       <div className="space-y-1">
-                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Titre suggéré</label>
-                        <input className="w-full text-2xl font-serif text-stone-900 border-b border-stone-100 focus:border-amber-500 outline-none pb-2 bg-transparent" value={result.title} onChange={(e) => setResult({...result, title: e.target.value})} />
+                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Titre du bijou</label>
+                        <input className="w-full text-2xl font-serif text-stone-900 border-b border-stone-100 outline-none pb-2 bg-transparent" value={result.title} onChange={(e) => setResult({...result, title: e.target.value})} />
                       </div>
-
                       <div className="space-y-1">
-                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Prix de vente (CHF)</label>
-                        <input type="number" className="w-full text-3xl font-black text-amber-600 border-b border-stone-100 focus:border-amber-500 outline-none pb-2 bg-transparent" value={result.price} onChange={(e) => setResult({...result, price: parseInt(e.target.value)})} />
+                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Estimation (CHF)</label>
+                        <input type="number" className="w-full text-3xl font-black text-amber-600 border-b border-stone-100 outline-none pb-2 bg-transparent" value={result.price} onChange={(e) => setResult({...result, price: parseInt(e.target.value)})} />
                       </div>
-
                       <div className="space-y-1">
-                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Description Luxueuse</label>
-                        <textarea className="w-full bg-stone-50 p-6 rounded-2xl text-stone-700 text-sm outline-none min-h-[180px] leading-relaxed border border-stone-100" value={result.description} onChange={(e) => setResult({...result, description: e.target.value})} />
+                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Description Expert</label>
+                        <textarea className="w-full bg-stone-50 p-6 rounded-2xl text-stone-700 text-sm outline-none min-h-[180px] leading-relaxed border border-stone-100" value={result.description.replace(/<[^>]*>?/gm, '')} onChange={(e) => setResult({...result, description: e.target.value})} />
                       </div>
-
-                      <button onClick={publishToShopify} disabled={publishing} className="w-full bg-stone-900 text-amber-400 py-6 rounded-[1.5rem] font-black text-xl hover:bg-stone-800 transition-all shadow-2xl hover:scale-[1.02] active:scale-95">
-                        {publishing ? 'Publication...' : 'Mettre en vente'}
+                      <button onClick={publishToShopify} disabled={publishing} className="w-full bg-stone-900 text-amber-400 py-6 rounded-[1.5rem] font-black text-xl hover:bg-stone-800 transition-all shadow-2xl">
+                        {publishing ? 'Transmission...' : 'Mettre en vente'}
                       </button>
                     </div>
                   ) : (
+                    <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-center p-12 bg-stone-100/30 rounded-[2.5rem] border border-stone-100 italic text-stone-400">
+                      L'expertise s'affichera ici après l'analyse.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
