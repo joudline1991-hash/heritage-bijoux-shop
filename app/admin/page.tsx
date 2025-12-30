@@ -11,7 +11,7 @@ import {
   CameraIcon,
   ArrowPathRoundedSquareIcon,
   ArchiveBoxIcon,
-  ClipboardDocumentCheckIcon // Nouvel icône pour l'import
+  ClipboardDocumentCheckIcon
 } from '@heroicons/react/24/outline';
 
 // Définition du format de l'archive
@@ -31,7 +31,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'create' | 'archive'>('dashboard');
 
   const [images, setImages] = useState<string[]>([]);
-  const [manualJson, setManualJson] = useState(''); // NOUVEAU : État pour le JSON manuel
+  const [manualJson, setManualJson] = useState(''); 
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -122,7 +122,6 @@ export default function AdminPage() {
         const compressedPromises = Array.from(files).map(file => compressImage(file));
         const newImages = await Promise.all(compressedPromises);
         setImages((prev) => [...prev, ...newImages]);
-        // On ne reset pas le résultat immédiatement pour permettre de changer les photos d'une fiche existante
       } finally {
         setLoading(false);
       }
@@ -154,25 +153,50 @@ export default function AdminPage() {
     }
   };
 
-  // --- 6. IMPORT MANUEL (Depuis Gemini Chat) ---
+  // --- 6. IMPORT MANUEL "INTELLIGENT" (MISE À JOUR MAJEURE) ---
   const handleManualImport = () => {
     try {
-      // Nettoyage du markdown si vous copiez le bloc ```json ... ``` entier
+      // 1. Nettoyage (supprime les balises Markdown ```json et ```)
       const cleanedJson = manualJson.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanedJson);
+      
+      let finalResult = null;
 
-      if (parsed.title && parsed.price) {
-        setResult(parsed);
-        // Si aucune image n'est chargée, on avertit juste (mais on laisse faire pour les tests)
-        if (images.length === 0) {
-             console.log("Note: Expertise importée sans image associée pour le moment.");
-        }
-        setManualJson(''); // On vide le champ après succès
-      } else {
-        alert("Le format JSON semble incomplet (titre ou prix manquant).");
+      // CAS A : Format "Expert/Complexe" (celui avec produit, description_site, etc.)
+      if (parsed.produit && parsed.produit.titre) {
+        console.log("Détection : Format Expert");
+        finalResult = {
+          title: parsed.produit.titre,
+          // On récupère la description longue HTML
+          description: parsed.description_site.longue,
+          price: parsed.produit.prix_vente_chf,
+          // Conversion des mots-clés (chaine "a, b, c") en tableau ["a", "b", "c"]
+          tags: parsed.seo_metadonnees && typeof parsed.seo_metadonnees.mots_cles === 'string'
+                ? parsed.seo_metadonnees.mots_cles.split(',').map((t: string) => t.trim())
+                : []
+        };
+      } 
+      // CAS B : Format "Simple" (Standard)
+      else if (parsed.title && parsed.price) {
+        console.log("Détection : Format Simple");
+        finalResult = parsed;
       }
+
+      // Application du résultat
+      if (finalResult) {
+        setResult(finalResult);
+        setManualJson(''); // On vide le champ
+        
+        if (images.length === 0) {
+             console.log("Note: Expertise importée sans image associée.");
+        }
+      } else {
+        alert("Le format JSON n'est pas reconnu. Vérifiez qu'il contient bien un titre et un prix.");
+      }
+
     } catch (e) {
-      alert("Erreur de lecture. Assurez-vous de ne copier que le texte entre les accolades { ... }");
+      alert("Erreur de lecture JSON. Vérifiez que vous avez bien copié tout le bloc entre les accolades { ... }");
+      console.error(e);
     }
   };
 
@@ -194,7 +218,7 @@ export default function AdminPage() {
           price: result.price,
           description: result.description,
           date: new Date().toLocaleDateString('fr-CH'),
-          image: images[0] || '' // Prend la première image s'il y en a une
+          image: images[0] || ''
         };
 
         // Sauvegarde locale
@@ -269,7 +293,7 @@ export default function AdminPage() {
               <div className="bg-stone-900 p-6 rounded-2xl shadow-xl text-white md:col-span-2 flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-xl text-amber-400">Prêt à expertiser ?</h3>
-                  <p className="text-stone-400 text-sm mt-1">L'IA est prête pour vos photos.</p>
+                  <p className="text-stone-400 text-sm mt-1">L'IA est prête pour vos photos ou vos imports.</p>
                 </div>
                 <button onClick={() => setActiveTab('create')} className="bg-white text-black px-6 py-3 rounded-xl font-bold hover:scale-105 transition-transform">
                   Nouveau
@@ -348,6 +372,7 @@ export default function AdminPage() {
                     <div>
                       <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Description</label>
                       <textarea className="w-full bg-stone-50 p-5 rounded-2xl text-stone-700 text-sm outline-none min-h-[180px] leading-relaxed border border-stone-100 mt-2" value={result.description.replace(/<[^>]*>?/gm, '')} onChange={e => setResult({...result, description: e.target.value})} />
+                      <p className="text-[10px] text-stone-400 mt-1">Note: Le HTML complet sera envoyé à Shopify.</p>
                     </div>
                     
                     <button onClick={publishToShopify} disabled={publishing} className="w-full bg-stone-900 text-amber-400 py-5 rounded-2xl font-bold text-xl hover:scale-[1.02] transition-transform shadow-2xl">
@@ -357,30 +382,30 @@ export default function AdminPage() {
                 ) : (
                   /* --- MODE IMPORT MANUEL (Si pas encore de résultat) --- */
                   <div className="flex flex-col gap-4 h-full">
-                     <div className="bg-stone-50 p-6 rounded-[2rem] border border-stone-200 flex flex-col justify-center items-center text-center flex-1">
-                        <ClipboardDocumentCheckIcon className="w-10 h-10 text-stone-300 mb-3" />
-                        <h3 className="font-bold text-stone-700 mb-2">Import Manuel (Gemini Chat)</h3>
-                        <p className="text-xs text-stone-400 mb-4 px-4">Collez le code JSON généré par votre conversation avec l'expert ici.</p>
-                        
-                        <textarea 
-                          value={manualJson}
-                          onChange={(e) => setManualJson(e.target.value)}
-                          placeholder='{ "title": "...", "price": ... }'
-                          className="w-full bg-white p-3 rounded-xl border border-stone-200 text-xs font-mono text-stone-600 outline-none focus:border-amber-400 mb-4 h-24 resize-none"
-                        />
-                        
-                        <button 
-                          onClick={handleManualImport} 
-                          disabled={!manualJson}
-                          className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${manualJson ? 'bg-stone-800 text-white hover:bg-black' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}
-                        >
-                          Importer l'expertise
-                        </button>
-                     </div>
-                     
-                     <div className="text-center py-4 text-stone-300 text-xs italic">
+                      <div className="bg-stone-50 p-6 rounded-[2rem] border border-stone-200 flex flex-col justify-center items-center text-center flex-1">
+                         <ClipboardDocumentCheckIcon className="w-10 h-10 text-stone-300 mb-3" />
+                         <h3 className="font-bold text-stone-700 mb-2">Import Manuel (Gemini Chat)</h3>
+                         <p className="text-xs text-stone-400 mb-4 px-4">Collez le code JSON généré par votre conversation avec l'expert ici.</p>
+                         
+                         <textarea 
+                           value={manualJson}
+                           onChange={(e) => setManualJson(e.target.value)}
+                           placeholder='{ "produit": { "titre": ... } }'
+                           className="w-full bg-white p-3 rounded-xl border border-stone-200 text-xs font-mono text-stone-600 outline-none focus:border-amber-400 mb-4 h-32 resize-none"
+                         />
+                         
+                         <button 
+                           onClick={handleManualImport} 
+                           disabled={!manualJson}
+                           className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${manualJson ? 'bg-stone-800 text-white hover:bg-black' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}
+                         >
+                           Importer l'expertise
+                         </button>
+                      </div>
+                      
+                      <div className="text-center py-4 text-stone-300 text-xs italic">
                         Ou ajoutez des photos à gauche pour l'analyse auto.
-                     </div>
+                      </div>
                   </div>
                 )}
               </div>
