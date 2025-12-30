@@ -10,7 +10,8 @@ import {
   ArrowPathIcon,
   CameraIcon,
   ArrowPathRoundedSquareIcon,
-  ArchiveBoxIcon
+  ArchiveBoxIcon,
+  ClipboardDocumentCheckIcon // Nouvel icône pour l'import
 } from '@heroicons/react/24/outline';
 
 // Définition du format de l'archive
@@ -30,6 +31,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'create' | 'archive'>('dashboard');
 
   const [images, setImages] = useState<string[]>([]);
+  const [manualJson, setManualJson] = useState(''); // NOUVEAU : État pour le JSON manuel
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -57,7 +59,7 @@ export default function AdminPage() {
     }
   };
 
-  // --- 2. COMPRESSION (Anti-Erreur 413 & TypeScript Fix) ---
+  // --- 2. COMPRESSION (Anti-Erreur 413) ---
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -80,7 +82,6 @@ export default function AdminPage() {
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
           
-          // FIX TYPESCRIPT : Ajout de "|| ''" pour garantir une string
           const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1] || '';
           resolve(base64);
         };
@@ -88,7 +89,7 @@ export default function AdminPage() {
     });
   };
 
-  // --- 3. ROTATION (TypeScript Fix) ---
+  // --- 3. ROTATION ---
   const rotateImage = (index: number) => {
     const base64 = images[index];
     const img = new Image();
@@ -103,7 +104,6 @@ export default function AdminPage() {
         ctx.rotate(90 * Math.PI / 180);
         ctx.drawImage(img, -img.width / 2, -img.height / 2);
         
-        // FIX TYPESCRIPT ICI AUSSI
         const rotatedBase64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1] || '';
         
         const newImages = [...images];
@@ -122,14 +122,14 @@ export default function AdminPage() {
         const compressedPromises = Array.from(files).map(file => compressImage(file));
         const newImages = await Promise.all(compressedPromises);
         setImages((prev) => [...prev, ...newImages]);
-        setResult(null);
+        // On ne reset pas le résultat immédiatement pour permettre de changer les photos d'une fiche existante
       } finally {
         setLoading(false);
       }
     }
   };
 
-  // --- 5. ANALYSE IA ---
+  // --- 5. ANALYSE IA (Automatique) ---
   const analyzeJewelry = async () => {
     if (images.length === 0) return;
     setLoading(true);
@@ -154,7 +154,29 @@ export default function AdminPage() {
     }
   };
 
-  // --- 6. PUBLICATION & ARCHIVAGE ---
+  // --- 6. IMPORT MANUEL (Depuis Gemini Chat) ---
+  const handleManualImport = () => {
+    try {
+      // Nettoyage du markdown si vous copiez le bloc ```json ... ``` entier
+      const cleanedJson = manualJson.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanedJson);
+
+      if (parsed.title && parsed.price) {
+        setResult(parsed);
+        // Si aucune image n'est chargée, on avertit juste (mais on laisse faire pour les tests)
+        if (images.length === 0) {
+             console.log("Note: Expertise importée sans image associée pour le moment.");
+        }
+        setManualJson(''); // On vide le champ après succès
+      } else {
+        alert("Le format JSON semble incomplet (titre ou prix manquant).");
+      }
+    } catch (e) {
+      alert("Erreur de lecture. Assurez-vous de ne copier que le texte entre les accolades { ... }");
+    }
+  };
+
+  // --- 7. PUBLICATION & ARCHIVAGE ---
   const publishToShopify = async () => {
     setPublishing(true);
     try {
@@ -172,7 +194,7 @@ export default function AdminPage() {
           price: result.price,
           description: result.description,
           date: new Date().toLocaleDateString('fr-CH'),
-          image: images[0] || ''
+          image: images[0] || '' // Prend la première image s'il y en a une
         };
 
         // Sauvegarde locale
@@ -180,7 +202,7 @@ export default function AdminPage() {
         setArchive(newArchive);
         localStorage.setItem('hb_archive', JSON.stringify(newArchive));
 
-        alert('Bijou publié avec succès !');
+        alert('Bijou publié avec succès sur Shopify !');
         setImages([]);
         setResult(null);
         setActiveTab('archive'); // Redirection vers l'archive
@@ -307,9 +329,10 @@ export default function AdminPage() {
               {/* Zone Résultat */}
               <div className="space-y-6">
                 {result ? (
+                  /* --- MODE ÉDITION DU RÉSULTAT --- */
                   <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-amber-100 space-y-5 animate-in zoom-in duration-300">
                     <div className="flex items-center gap-2 text-emerald-600 font-bold bg-emerald-50 px-4 py-2 rounded-full w-fit text-sm">
-                      <CheckCircleIcon className="w-5 h-5" /> Expertise terminée
+                      <CheckCircleIcon className="w-5 h-5" /> Expertise prête
                     </div>
                     
                     <div>
@@ -332,8 +355,32 @@ export default function AdminPage() {
                     </button>
                   </div>
                 ) : (
-                  <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-center p-12 bg-stone-100/50 rounded-[2.5rem] border-2 border-dashed border-stone-200 italic text-stone-400">
-                    <p>Ajoutez des photos pour voir l'expertise IA ici.</p>
+                  /* --- MODE IMPORT MANUEL (Si pas encore de résultat) --- */
+                  <div className="flex flex-col gap-4 h-full">
+                     <div className="bg-stone-50 p-6 rounded-[2rem] border border-stone-200 flex flex-col justify-center items-center text-center flex-1">
+                        <ClipboardDocumentCheckIcon className="w-10 h-10 text-stone-300 mb-3" />
+                        <h3 className="font-bold text-stone-700 mb-2">Import Manuel (Gemini Chat)</h3>
+                        <p className="text-xs text-stone-400 mb-4 px-4">Collez le code JSON généré par votre conversation avec l'expert ici.</p>
+                        
+                        <textarea 
+                          value={manualJson}
+                          onChange={(e) => setManualJson(e.target.value)}
+                          placeholder='{ "title": "...", "price": ... }'
+                          className="w-full bg-white p-3 rounded-xl border border-stone-200 text-xs font-mono text-stone-600 outline-none focus:border-amber-400 mb-4 h-24 resize-none"
+                        />
+                        
+                        <button 
+                          onClick={handleManualImport} 
+                          disabled={!manualJson}
+                          className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${manualJson ? 'bg-stone-800 text-white hover:bg-black' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}
+                        >
+                          Importer l'expertise
+                        </button>
+                     </div>
+                     
+                     <div className="text-center py-4 text-stone-300 text-xs italic">
+                        Ou ajoutez des photos à gauche pour l'analyse auto.
+                     </div>
                   </div>
                 )}
               </div>
