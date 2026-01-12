@@ -11,7 +11,8 @@ import {
   CameraIcon,
   ArrowPathRoundedSquareIcon,
   ArchiveBoxIcon,
-  ClipboardDocumentCheckIcon
+  ClipboardDocumentCheckIcon,
+  PencilSquareIcon // Icône pour le bouton éditer
 } from '@heroicons/react/24/outline';
 
 // Définition du format de l'archive
@@ -153,7 +154,7 @@ export default function AdminPage() {
     }
   };
 
-  // --- 6. IMPORT MANUEL "INTELLIGENT" (MISE À JOUR MAJEURE) ---
+  // --- 6. IMPORT MANUEL "INTELLIGENT" ---
   const handleManualImport = () => {
     try {
       // 1. Nettoyage (supprime les balises Markdown ```json et ```)
@@ -162,21 +163,19 @@ export default function AdminPage() {
       
       let finalResult = null;
 
-      // CAS A : Format "Expert/Complexe" (celui avec produit, description_site, etc.)
+      // CAS A : Format "Expert/Complexe"
       if (parsed.produit && parsed.produit.titre) {
         console.log("Détection : Format Expert");
         finalResult = {
           title: parsed.produit.titre,
-          // On récupère la description longue HTML
           description: parsed.description_site.longue,
           price: parsed.produit.prix_vente_chf,
-          // Conversion des mots-clés (chaine "a, b, c") en tableau ["a", "b", "c"]
           tags: parsed.seo_metadonnees && typeof parsed.seo_metadonnees.mots_cles === 'string'
                 ? parsed.seo_metadonnees.mots_cles.split(',').map((t: string) => t.trim())
                 : []
         };
       } 
-      // CAS B : Format "Simple" (Standard)
+      // CAS B : Format "Simple"
       else if (parsed.title && parsed.price) {
         console.log("Détection : Format Simple");
         finalResult = parsed;
@@ -185,7 +184,7 @@ export default function AdminPage() {
       // Application du résultat
       if (finalResult) {
         setResult(finalResult);
-        setManualJson(''); // On vide le champ
+        setManualJson(''); 
         
         if (images.length === 0) {
              console.log("Note: Expertise importée sans image associée.");
@@ -413,7 +412,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ARCHIVE TAB */}
+        {/* ARCHIVE TAB (MISE À JOUR) */}
         {activeTab === 'archive' && (
           <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
             <h2 className="text-3xl font-serif italic text-stone-900">Historique</h2>
@@ -425,19 +424,39 @@ export default function AdminPage() {
                   ) : (
                     <div className="w-20 h-20 bg-stone-100 rounded-xl flex items-center justify-center"><PhotoIcon className="w-8 h-8 text-stone-300"/></div>
                   )}
+                  
                   <div className="flex-1">
                     <h4 className="font-bold text-stone-800 text-lg">{item.title}</h4>
                     <p className="text-stone-400 text-sm">{item.date} • <span className="text-amber-600 font-bold">{item.price} CHF</span></p>
                   </div>
-                  <button onClick={() => {
-                    if(confirm('Supprimer de l\'archive ?')) {
-                      const newArchive = archive.filter(a => a.id !== item.id);
-                      setArchive(newArchive);
-                      localStorage.setItem('hb_archive', JSON.stringify(newArchive));
-                    }
-                  }} className="text-stone-300 hover:text-red-400 p-3 transition-colors">
-                    <TrashIcon className="w-5 h-5" />
-                  </button>
+                  
+                  {/* BOUTONS D'ACTION */}
+                  <div className="flex gap-2">
+                    {/* Bouton ÉDITER / PUBLIER */}
+                    <button 
+                      onClick={() => {
+                        setResult(item); // 1. On charge l'item dans le résultat
+                        if(item.image) setImages([item.image]); // 2. On remet l'image si dispo
+                        setActiveTab('create'); // 3. On bascule vers l'onglet d'édition
+                        window.scrollTo({ top: 0, behavior: 'smooth' }); // 4. On remonte en haut
+                      }}
+                      className="text-stone-400 hover:text-amber-600 hover:bg-amber-50 p-3 rounded-xl transition-all"
+                      title="Éditer et Publier"
+                    >
+                      <PencilSquareIcon className="w-5 h-5" />
+                    </button>
+
+                    {/* Bouton SUPPRIMER */}
+                    <button onClick={() => {
+                      if(confirm('Supprimer de l\'archive ?')) {
+                        const newArchive = archive.filter(a => a.id !== item.id);
+                        setArchive(newArchive);
+                        localStorage.setItem('hb_archive', JSON.stringify(newArchive));
+                      }
+                    }} className="text-stone-300 hover:text-red-400 hover:bg-red-50 p-3 rounded-xl transition-all" title="Supprimer">
+                      <TrashIcon className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
               ))}
               {archive.length === 0 && (
