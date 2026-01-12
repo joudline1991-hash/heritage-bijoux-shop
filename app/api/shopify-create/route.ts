@@ -1,14 +1,14 @@
 export async function POST(req: Request) {
-  console.log("--- DÉBUT DE LA CRÉATION SHOPIFY ---");
+  console.log("--- DÉBUT DE LA CRÉATION SHOPIFY (MODE PUBLIC) ---");
 
   try {
     // 1. Récupération et vérification des données reçues
     const data = await req.json();
-    console.log("Données reçues de l'analyse IA :", JSON.stringify(data));
+    console.log("Données reçues :", JSON.stringify(data));
 
     if (!data.title || !data.price) {
-      console.error("ERREUR: Données de produit incomplètes (titre ou prix manquant).");
-      return new Response(JSON.stringify({ error: "Données manquantes pour créer le produit." }), { status: 400 });
+      console.error("ERREUR: Données incomplètes.");
+      return new Response(JSON.stringify({ error: "Données manquantes." }), { status: 400 });
     }
 
     // 2. Vérification des configurations serveur
@@ -16,13 +16,12 @@ export async function POST(req: Request) {
     const token = process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN;
 
     if (!domain || !token) {
-      console.error("ERREUR: Configuration Shopify manquante dans Vercel (Domain ou Token).");
-      return new Response(JSON.stringify({ error: "Configuration serveur incomplète." }), { status: 500 });
+      console.error("ERREUR: Configuration Shopify manquante.");
+      return new Response(JSON.stringify({ error: "Config serveur incomplète." }), { status: 500 });
     }
 
     // 3. Préparation de la requête Shopify
     const shopifyUrl = `https://${domain}/admin/api/2025-01/products.json`;
-    console.log("Tentative d'envoi vers Shopify :", shopifyUrl);
 
     const response = await fetch(shopifyUrl, {
       method: "POST",
@@ -34,36 +33,44 @@ export async function POST(req: Request) {
         product: {
           title: data.title,
           body_html: data.description,
-          variants: [{ price: data.price.toString() }],
+          // --- CHANGEMENT MAJEUR ICI ---
+          status: "active", // Rend le produit visible immédiatement sur le site
+          published: true,  // Confirme la publication
+          variants: [
+            { 
+              price: data.price.toString(),
+              // inventory_management: null signifie "Ne pas suivre le stock".
+              // Le produit sera donc achetable tout de suite sans marquer "Épuisé".
+              // Vous pourrez mettre le stock à "1" manuellement plus tard si besoin.
+              inventory_management: null 
+            }
+          ],
           tags: data.tags ? data.tags.join(", ") : "Expertisé IA",
-          status: "draft", // Reste en brouillon pour votre validation finale
         },
       }),
     });
 
-    // 4. Analyse de la réponse de Shopify
+    // 4. Analyse de la réponse
     const result = await response.json();
 
     if (!response.ok) {
       console.error("ERREUR SHOPIFY API :", JSON.stringify(result));
       return new Response(JSON.stringify({ 
-        error: "Shopify a refusé la création", 
+        error: "Refus de Shopify", 
         details: result 
       }), { status: response.status });
     }
 
-    console.log("--- PRODUIT CRÉÉ AVEC SUCCÈS SUR SHOPIFY --- ID:", result.product?.id);
+    console.log("--- PRODUIT EN LIGNE ! ID:", result.product?.id);
     
     return new Response(JSON.stringify(result), { 
       headers: { "Content-Type": "application/json" } 
     });
 
   } catch (error: any) {
-    console.error("ERREUR CRITIQUE DANS SHOPIFY-CREATE :");
-    console.error("Message :", error.message);
-    
+    console.error("ERREUR CRITIQUE :", error.message);
     return new Response(JSON.stringify({ 
-      error: "Erreur interne lors de la création Shopify",
+      error: "Erreur serveur",
       details: error.message 
     }), { status: 500 });
   }
