@@ -12,7 +12,7 @@ import {
   ArrowPathRoundedSquareIcon,
   ArchiveBoxIcon,
   ClipboardDocumentCheckIcon,
-  PencilSquareIcon // Icône pour le bouton éditer
+  PencilSquareIcon
 } from '@heroicons/react/24/outline';
 
 // Définition du format de l'archive
@@ -51,7 +51,7 @@ export default function AdminPage() {
     }
   }, []);
 
-  // --- 1. SÉCURITÉ ---
+  // --- SÉCURITÉ ---
   const checkPassword = () => {
     if (password === process.env.NEXT_PUBLIC_ADMIN_PASSWORD) {
       setIsAuthenticated(true);
@@ -60,7 +60,7 @@ export default function AdminPage() {
     }
   };
 
-  // --- 2. COMPRESSION (Anti-Erreur 413) ---
+  // --- COMPRESSION IMAGE ---
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -90,7 +90,7 @@ export default function AdminPage() {
     });
   };
 
-  // --- 3. ROTATION ---
+  // --- ROTATION IMAGE ---
   const rotateImage = (index: number) => {
     const base64 = images[index];
     const img = new Image();
@@ -114,7 +114,7 @@ export default function AdminPage() {
     };
   };
 
-  // --- 4. GESTION DES PHOTOS ---
+  // --- GESTION DES FICHIERS ---
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
@@ -129,7 +129,7 @@ export default function AdminPage() {
     }
   };
 
-  // --- 5. ANALYSE IA (Automatique) ---
+  // --- ANALYSE IA (GEMINI) ---
   const analyzeJewelry = async () => {
     if (images.length === 0) return;
     setLoading(true);
@@ -154,18 +154,17 @@ export default function AdminPage() {
     }
   };
 
-  // --- 6. IMPORT MANUEL "INTELLIGENT" ---
+  // --- IMPORT MANUEL INTELLIGENT ---
   const handleManualImport = () => {
     try {
-      // 1. Nettoyage (supprime les balises Markdown ```json et ```)
+      // Nettoyage du JSON
       const cleanedJson = manualJson.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanedJson);
       
       let finalResult = null;
 
-      // CAS A : Format "Expert/Complexe"
+      // Cas A: Format Expert
       if (parsed.produit && parsed.produit.titre) {
-        console.log("Détection : Format Expert");
         finalResult = {
           title: parsed.produit.titre,
           description: parsed.description_site.longue,
@@ -175,31 +174,25 @@ export default function AdminPage() {
                 : []
         };
       } 
-      // CAS B : Format "Simple"
+      // Cas B: Format Simple
       else if (parsed.title && parsed.price) {
-        console.log("Détection : Format Simple");
         finalResult = parsed;
       }
 
-      // Application du résultat
       if (finalResult) {
         setResult(finalResult);
         setManualJson(''); 
-        
-        if (images.length === 0) {
-             console.log("Note: Expertise importée sans image associée.");
-        }
       } else {
-        alert("Le format JSON n'est pas reconnu. Vérifiez qu'il contient bien un titre et un prix.");
+        alert("Le format JSON n'est pas reconnu.");
       }
 
     } catch (e) {
-      alert("Erreur de lecture JSON. Vérifiez que vous avez bien copié tout le bloc entre les accolades { ... }");
+      alert("Erreur de lecture JSON.");
       console.error(e);
     }
   };
 
-  // --- 7. PUBLICATION & ARCHIVAGE ---
+  // --- PUBLICATION SHOPIFY ---
   const publishToShopify = async () => {
     setPublishing(true);
     try {
@@ -210,7 +203,7 @@ export default function AdminPage() {
       });
       
       if (res.ok) {
-        // Création de l'objet archive
+        // Ajout à l'archive locale
         const newItem: ArchiveItem = {
           id: Date.now().toString(),
           title: result.title,
@@ -220,7 +213,6 @@ export default function AdminPage() {
           image: images[0] || ''
         };
 
-        // Sauvegarde locale
         const newArchive = [newItem, ...archive];
         setArchive(newArchive);
         localStorage.setItem('hb_archive', JSON.stringify(newArchive));
@@ -228,7 +220,7 @@ export default function AdminPage() {
         alert('Bijou publié avec succès sur Shopify !');
         setImages([]);
         setResult(null);
-        setActiveTab('archive'); // Redirection vers l'archive
+        setActiveTab('archive'); 
       } else {
         throw new Error("Erreur Shopify");
       }
@@ -239,235 +231,197 @@ export default function AdminPage() {
     }
   };
 
-  // --- RENDU : ÉCRAN DE CONNEXION ---
+  // --- ÉCRAN DE CONNEXION ---
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-stone-50 px-4">
-        <div className="max-w-md w-full bg-white p-10 rounded-3xl shadow-2xl border border-stone-100 text-center">
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-stone-100 text-center">
           <h1 className="text-3xl font-serif text-stone-900 mb-2 italic">Héritage Bijoux</h1>
-          <p className="text-stone-400 mb-8 tracking-widest uppercase text-xs">Accès Propriétaire</p>
+          <p className="text-stone-400 mb-6 text-xs uppercase tracking-widest">Admin Mobile</p>
           <input 
             type="password" placeholder="Code secret" value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-5 py-4 rounded-2xl border border-stone-200 outline-none mb-6 text-black text-center text-lg"
+            className="w-full px-4 py-3 rounded-xl border border-stone-200 text-center text-lg mb-4 outline-none focus:border-amber-500"
           />
-          <button onClick={checkPassword} className="w-full bg-stone-900 text-white py-4 rounded-2xl font-bold hover:bg-stone-800 shadow-lg">
-            Déverrouiller
+          <button onClick={checkPassword} className="w-full bg-stone-900 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-black transition-colors">
+            Entrer
           </button>
         </div>
       </div>
     );
   }
 
-  // --- RENDU : APPLICATION ---
+  // --- COMPOSANT BOUTON NAV ---
+  const NavButton = ({ tab, icon: Icon, label }: any) => (
+    <button onClick={() => setActiveTab(tab)} className={`flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 p-2 md:p-4 rounded-xl transition-all ${activeTab === tab ? 'text-amber-700 bg-amber-50' : 'text-stone-400 hover:bg-stone-50'}`}>
+      <Icon className="w-6 h-6" />
+      <span className="text-[10px] md:text-base font-bold">{label}</span>
+    </button>
+  );
+
+  // --- RENDU PRINCIPAL ---
   return (
-    <div className="min-h-screen bg-stone-50 flex">
-      {/* Sidebar */}
-      <div className="w-20 md:w-64 bg-white border-r border-stone-200 flex flex-col fixed md:relative h-full z-10">
-        <div className="p-8 font-serif text-amber-700 hidden md:block text-2xl italic">HB</div>
-        <nav className="flex-1 p-4 space-y-2 mt-4 md:mt-0">
-          <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-amber-50 text-amber-800' : 'text-stone-400 hover:bg-stone-50'}`}>
-            <ChartBarIcon className="w-6 h-6" /> <span className="hidden md:block font-bold">Stats</span>
-          </button>
-          <button onClick={() => setActiveTab('create')} className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${activeTab === 'create' ? 'bg-amber-50 text-amber-800' : 'text-stone-400 hover:bg-stone-50'}`}>
-            <PlusCircleIcon className="w-6 h-6" /> <span className="hidden md:block font-bold">Expertise</span>
-          </button>
-          <button onClick={() => setActiveTab('archive')} className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${activeTab === 'archive' ? 'bg-amber-50 text-amber-800' : 'text-stone-400 hover:bg-stone-50'}`}>
-            <ArchiveBoxIcon className="w-6 h-6" /> <span className="hidden md:block font-bold">Archive</span>
-          </button>
+    <div className="min-h-screen bg-stone-50 flex flex-col md:flex-row">
+      
+      {/* 1. SIDEBAR (DESKTOP) */}
+      <div className="hidden md:flex w-64 bg-white border-r border-stone-200 flex-col sticky top-0 h-screen z-20">
+        <div className="p-8 font-serif text-amber-700 text-2xl italic">HB Admin</div>
+        <nav className="flex-1 px-4 space-y-2">
+          <NavButton tab="dashboard" icon={ChartBarIcon} label="Tableau de bord" />
+          <NavButton tab="create" icon={PlusCircleIcon} label="Expertise" />
+          <NavButton tab="archive" icon={ArchiveBoxIcon} label="Historique" />
         </nav>
       </div>
 
-      <div className="flex-1 p-6 md:p-10 overflow-y-auto ml-20 md:ml-0">
+      {/* 2. CONTENU PRINCIPAL */}
+      <div className="flex-1 p-4 md:p-10 pb-24 md:pb-10 overflow-y-auto">
         
-        {/* DASHBOARD TAB */}
+        {/* En-tête Mobile */}
+        <div className="md:hidden flex justify-between items-center mb-6 pt-2">
+          <span className="font-serif text-xl italic text-stone-800">Héritage Bijoux</span>
+          <div className="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full font-bold">Admin</div>
+        </div>
+
+        {/* --- DASHBOARD TAB --- */}
         {activeTab === 'dashboard' && (
           <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
-            <h2 className="text-3xl font-serif italic text-stone-900">Tableau de bord</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <h2 className="text-2xl md:text-3xl font-serif italic text-stone-900">Tableau de bord</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-100">
-                <p className="text-stone-400 text-xs uppercase font-bold tracking-widest">Bijoux Archivés</p>
+                <p className="text-stone-400 text-xs uppercase font-bold tracking-widest">En Archive</p>
                 <p className="text-4xl font-serif mt-2 text-stone-800">{archive.length}</p>
               </div>
-              <div className="bg-stone-900 p-6 rounded-2xl shadow-xl text-white md:col-span-2 flex items-center justify-between">
+              <div onClick={() => setActiveTab('create')} className="bg-stone-900 p-6 rounded-2xl shadow-lg text-white md:col-span-2 flex items-center justify-between cursor-pointer active:scale-95 transition-transform">
                 <div>
-                  <h3 className="font-bold text-xl text-amber-400">Prêt à expertiser ?</h3>
-                  <p className="text-stone-400 text-sm mt-1">L'IA est prête pour vos photos ou vos imports.</p>
+                  <h3 className="font-bold text-lg text-amber-400">Nouvelle Expertise</h3>
+                  <p className="text-stone-400 text-xs mt-1">Lancer l'IA ou importer</p>
                 </div>
-                <button onClick={() => setActiveTab('create')} className="bg-white text-black px-6 py-3 rounded-xl font-bold hover:scale-105 transition-transform">
-                  Nouveau
-                </button>
+                <PlusCircleIcon className="w-8 h-8 text-white" />
               </div>
             </div>
           </div>
         )}
 
-        {/* CREATE TAB */}
+        {/* --- CREATE TAB --- */}
         {activeTab === 'create' && (
-          <div className="max-w-6xl mx-auto space-y-8 animate-in slide-in-from-bottom-5 duration-500">
-            <h2 className="text-3xl font-serif italic text-stone-900">Nouvelle Expertise</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-              {/* Zone Photos */}
-              <div className="space-y-6">
-                <div className="bg-white p-8 rounded-[2.5rem] border-2 border-dashed border-stone-200 relative overflow-hidden shadow-sm">
-                  {loading && <div className="absolute top-0 left-0 h-1.5 bg-amber-500 transition-all duration-300" style={{ width: `${progress}%` }} />}
+          <div className="max-w-5xl mx-auto space-y-6 animate-in slide-in-from-bottom-5 duration-500">
+            <h2 className="text-2xl md:text-3xl font-serif italic text-stone-900">Expertise</h2>
+            
+            {/* Zone Photos */}
+            <div className="bg-white p-4 md:p-8 rounded-[2rem] shadow-sm border border-stone-100">
+                {loading && <div className="h-1 bg-amber-500 w-full mb-4 rounded-full animate-pulse" />}
+                
+                <div className="grid grid-cols-3 gap-2 md:gap-4 mb-4">
+                  {images.map((img, i) => (
+                    <div key={i} className="relative aspect-square">
+                      <img src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover rounded-xl bg-stone-100 border border-stone-100" alt="preview" />
+                      <button onClick={() => setImages(images.filter((_, idx) => idx !== i))} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md"><TrashIcon className="w-3 h-3" /></button>
+                      <button onClick={() => rotateImage(i)} className="absolute bottom-1 right-1 bg-white text-stone-600 p-1 rounded-full shadow-md"><ArrowPathRoundedSquareIcon className="w-4 h-4" /></button>
+                    </div>
+                  ))}
                   
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                    {images.map((img, i) => (
-                      <div key={i} className="relative aspect-square group">
-                        <img src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover rounded-2xl border border-stone-100" alt="preview" />
-                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => rotateImage(i)} className="bg-white p-2 rounded-full shadow-lg text-amber-600 hover:scale-110 transition-transform">
-                            <ArrowPathRoundedSquareIcon className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setImages(images.filter((_, idx) => idx !== i))} className="bg-white p-2 rounded-full shadow-lg text-red-500 hover:scale-110 transition-transform">
-                            <TrashIcon className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    
-                    <label className="border-2 border-dashed border-stone-200 rounded-2xl aspect-square flex flex-col items-center justify-center cursor-pointer hover:bg-stone-50 transition-colors group">
-                      <CameraIcon className="w-8 h-8 text-stone-300 group-hover:text-amber-500" />
-                      <span className="text-[10px] font-bold mt-2 text-stone-400">PHOTO</span>
-                      <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} className="hidden" />
-                    </label>
-                    
-                    <label className="border-2 border-dashed border-stone-200 rounded-2xl aspect-square flex flex-col items-center justify-center cursor-pointer hover:bg-stone-50 transition-colors group">
-                      <PhotoIcon className="w-8 h-8 text-stone-300 group-hover:text-amber-500" />
-                      <span className="text-[10px] font-bold mt-2 text-stone-400">GALERIE</span>
-                      <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" />
-                    </label>
-                  </div>
-
-                  {images.length > 0 && !result && (
-                    <button onClick={analyzeJewelry} disabled={loading} className="w-full bg-amber-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-amber-700 transition-all shadow-xl flex items-center justify-center gap-2">
-                      {loading ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : null}
-                      {loading ? "Analyse..." : `Analyser ${images.length} photos`}
-                    </button>
-                  )}
+                  <label className="bg-stone-50 border border-stone-200 rounded-xl aspect-square flex flex-col items-center justify-center cursor-pointer active:bg-stone-100 transition-colors">
+                    <CameraIcon className="w-6 h-6 text-stone-400 mb-1" />
+                    <span className="text-[9px] font-bold text-stone-500 uppercase">Caméra</span>
+                    <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} className="hidden" />
+                  </label>
+                  
+                  <label className="bg-stone-50 border border-stone-200 rounded-xl aspect-square flex flex-col items-center justify-center cursor-pointer active:bg-stone-100 transition-colors">
+                    <PhotoIcon className="w-6 h-6 text-stone-400 mb-1" />
+                    <span className="text-[9px] font-bold text-stone-500 uppercase">Galerie</span>
+                    <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" />
+                  </label>
                 </div>
-              </div>
 
-              {/* Zone Résultat */}
-              <div className="space-y-6">
-                {result ? (
-                  /* --- MODE ÉDITION DU RÉSULTAT --- */
-                  <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-amber-100 space-y-5 animate-in zoom-in duration-300">
-                    <div className="flex items-center gap-2 text-emerald-600 font-bold bg-emerald-50 px-4 py-2 rounded-full w-fit text-sm">
-                      <CheckCircleIcon className="w-5 h-5" /> Expertise prête
-                    </div>
-                    
-                    <div>
-                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Titre</label>
-                      <input className="w-full text-2xl font-serif text-stone-900 border-b border-stone-100 outline-none py-2 bg-transparent focus:border-amber-500 transition-colors" value={result.title} onChange={e => setResult({...result, title: e.target.value})} />
-                    </div>
-                    
-                    <div>
-                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Prix (CHF)</label>
-                      <input type="number" className="w-full text-3xl font-bold text-amber-600 border-b border-stone-100 outline-none py-2 bg-transparent focus:border-amber-500 transition-colors" value={result.price} onChange={e => setResult({...result, price: parseInt(e.target.value)})} />
-                    </div>
-                    
-                    <div>
-                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Description</label>
-                      <textarea className="w-full bg-stone-50 p-5 rounded-2xl text-stone-700 text-sm outline-none min-h-[180px] leading-relaxed border border-stone-100 mt-2" value={result.description.replace(/<[^>]*>?/gm, '')} onChange={e => setResult({...result, description: e.target.value})} />
-                      <p className="text-[10px] text-stone-400 mt-1">Note: Le HTML complet sera envoyé à Shopify.</p>
-                    </div>
-                    
-                    <button onClick={publishToShopify} disabled={publishing} className="w-full bg-stone-900 text-amber-400 py-5 rounded-2xl font-bold text-xl hover:scale-[1.02] transition-transform shadow-2xl">
-                      {publishing ? 'Publication...' : 'Mettre en vente'}
-                    </button>
-                  </div>
-                ) : (
-                  /* --- MODE IMPORT MANUEL (Si pas encore de résultat) --- */
-                  <div className="flex flex-col gap-4 h-full">
-                      <div className="bg-stone-50 p-6 rounded-[2rem] border border-stone-200 flex flex-col justify-center items-center text-center flex-1">
-                         <ClipboardDocumentCheckIcon className="w-10 h-10 text-stone-300 mb-3" />
-                         <h3 className="font-bold text-stone-700 mb-2">Import Manuel (Gemini Chat)</h3>
-                         <p className="text-xs text-stone-400 mb-4 px-4">Collez le code JSON généré par votre conversation avec l'expert ici.</p>
-                         
-                         <textarea 
-                           value={manualJson}
-                           onChange={(e) => setManualJson(e.target.value)}
-                           placeholder='{ "produit": { "titre": ... } }'
-                           className="w-full bg-white p-3 rounded-xl border border-stone-200 text-xs font-mono text-stone-600 outline-none focus:border-amber-400 mb-4 h-32 resize-none"
-                         />
-                         
-                         <button 
-                           onClick={handleManualImport} 
-                           disabled={!manualJson}
-                           className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${manualJson ? 'bg-stone-800 text-white hover:bg-black' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}
-                         >
-                           Importer l'expertise
-                         </button>
-                      </div>
-                      
-                      <div className="text-center py-4 text-stone-300 text-xs italic">
-                        Ou ajoutez des photos à gauche pour l'analyse auto.
-                      </div>
-                  </div>
+                {images.length > 0 && !result && (
+                  <button onClick={analyzeJewelry} disabled={loading} className="w-full bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2">
+                      {loading ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : null}
+                      {loading ? "Analyse en cours..." : `Analyser (${images.length})`}
+                  </button>
                 )}
-              </div>
             </div>
+
+            {/* Zone Résultat / Import */}
+            {result ? (
+              <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-amber-100 space-y-4 animate-in zoom-in duration-300">
+                 <div className="flex items-center gap-2 text-emerald-600 text-xs font-bold uppercase tracking-widest mb-2">
+                    <CheckCircleIcon className="w-4 h-4" /> Expertise IA
+                 </div>
+                 
+                 <div>
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Titre</label>
+                    <input className="w-full text-xl font-serif text-stone-900 border-b border-stone-100 py-2 bg-transparent outline-none focus:border-amber-500 transition-colors" value={result.title} onChange={e => setResult({...result, title: e.target.value})} placeholder="Titre du bijou" />
+                 </div>
+                 
+                 <div>
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Prix (CHF)</label>
+                    <input type="number" className="w-full text-2xl font-bold text-amber-600 border-b border-stone-100 py-2 bg-transparent outline-none focus:border-amber-500 transition-colors" value={result.price} onChange={e => setResult({...result, price: parseInt(e.target.value)})} />
+                 </div>
+                 
+                 <div>
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Description</label>
+                    <textarea className="w-full bg-stone-50 p-4 rounded-xl text-sm border border-stone-100 h-32 outline-none focus:border-amber-500 transition-colors mt-1" value={result.description.replace(/<[^>]*>?/gm, '')} onChange={e => setResult({...result, description: e.target.value})} />
+                 </div>
+                 
+                 <button onClick={publishToShopify} disabled={publishing} className="w-full bg-stone-900 text-amber-400 py-4 rounded-xl font-bold text-lg shadow-xl active:scale-95 transition-transform mt-2">
+                    {publishing ? 'Publication...' : 'Mettre en vente'}
+                 </button>
+              </div>
+            ) : (
+              <div className="bg-stone-50 p-6 rounded-[2rem] border border-stone-200 text-center">
+                 <ClipboardDocumentCheckIcon className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                 <p className="text-xs text-stone-400 mb-3 uppercase font-bold">Ou import manuel (JSON)</p>
+                 <textarea value={manualJson} onChange={(e) => setManualJson(e.target.value)} placeholder="Coller le JSON ici..." className="w-full bg-white p-3 rounded-xl border border-stone-200 text-xs h-20 mb-3 outline-none focus:border-amber-500" />
+                 <button onClick={handleManualImport} disabled={!manualJson} className="w-full bg-white border border-stone-300 text-stone-600 py-2 rounded-lg font-bold text-sm hover:bg-stone-100">Importer</button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ARCHIVE TAB (MISE À JOUR) */}
+        {/* --- ARCHIVE TAB --- */}
         {activeTab === 'archive' && (
-          <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
-            <h2 className="text-3xl font-serif italic text-stone-900">Historique</h2>
-            <div className="grid gap-4">
+          <div className="max-w-4xl mx-auto space-y-4 animate-in fade-in duration-500">
+            <h2 className="text-2xl md:text-3xl font-serif italic text-stone-900">Historique</h2>
+            <div className="space-y-3">
               {archive.map(item => (
-                <div key={item.id} className="bg-white p-4 rounded-2xl shadow-sm border border-stone-100 flex gap-4 items-center hover:shadow-md transition-shadow">
+                <div key={item.id} className="bg-white p-3 rounded-2xl shadow-sm border border-stone-100 flex gap-3 items-center">
                   {item.image ? (
-                    <img src={`data:image/jpeg;base64,${item.image}`} className="w-20 h-20 object-cover rounded-xl bg-stone-100" alt="" />
-                  ) : (
-                    <div className="w-20 h-20 bg-stone-100 rounded-xl flex items-center justify-center"><PhotoIcon className="w-8 h-8 text-stone-300"/></div>
-                  )}
+                    <img src={`data:image/jpeg;base64,${item.image}`} className="w-16 h-16 object-cover rounded-xl bg-stone-100" alt="archive" />
+                  ) : <div className="w-16 h-16 bg-stone-100 rounded-xl flex items-center justify-center"><PhotoIcon className="w-6 h-6 text-stone-300"/></div>}
                   
-                  <div className="flex-1">
-                    <h4 className="font-bold text-stone-800 text-lg">{item.title}</h4>
-                    <p className="text-stone-400 text-sm">{item.date} • <span className="text-amber-600 font-bold">{item.price} CHF</span></p>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-stone-800 text-sm truncate">{item.title}</h4>
+                    <p className="text-amber-600 font-bold text-xs">{item.price} CHF <span className="text-stone-300">•</span> {item.date}</p>
                   </div>
                   
-                  {/* BOUTONS D'ACTION */}
-                  <div className="flex gap-2">
-                    {/* Bouton ÉDITER / PUBLIER */}
-                    <button 
-                      onClick={() => {
-                        setResult(item); // 1. On charge l'item dans le résultat
-                        if(item.image) setImages([item.image]); // 2. On remet l'image si dispo
-                        setActiveTab('create'); // 3. On bascule vers l'onglet d'édition
-                        window.scrollTo({ top: 0, behavior: 'smooth' }); // 4. On remonte en haut
-                      }}
-                      className="text-stone-400 hover:text-amber-600 hover:bg-amber-50 p-3 rounded-xl transition-all"
-                      title="Éditer et Publier"
-                    >
+                  <div className="flex gap-1">
+                    <button onClick={() => { setResult(item); if(item.image) setImages([item.image]); setActiveTab('create'); window.scrollTo({top:0, behavior:'smooth'}); }} className="p-2 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100">
                       <PencilSquareIcon className="w-5 h-5" />
                     </button>
-
-                    {/* Bouton SUPPRIMER */}
-                    <button onClick={() => {
-                      if(confirm('Supprimer de l\'archive ?')) {
-                        const newArchive = archive.filter(a => a.id !== item.id);
-                        setArchive(newArchive);
-                        localStorage.setItem('hb_archive', JSON.stringify(newArchive));
-                      }
-                    }} className="text-stone-300 hover:text-red-400 hover:bg-red-50 p-3 rounded-xl transition-all" title="Supprimer">
+                    <button onClick={() => { if(confirm('Supprimer ?')) { const n = archive.filter(a => a.id !== item.id); setArchive(n); localStorage.setItem('hb_archive', JSON.stringify(n)); }}} className="p-2 bg-stone-100 text-stone-400 rounded-lg hover:bg-red-50 hover:text-red-500">
                       <TrashIcon className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
               ))}
-              {archive.length === 0 && (
-                <div className="text-center py-20 text-stone-400 italic">
-                  Aucun bijou archivé pour le moment.
-                </div>
-              )}
+              {archive.length === 0 && <p className="text-center text-stone-400 text-sm py-10 italic">Aucune archive pour l'instant.</p>}
             </div>
           </div>
         )}
+
       </div>
+
+      {/* 3. NAVIGATION BASSE (MOBILE SEULEMENT) */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-stone-200 px-6 py-3 flex justify-between items-center z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] safe-area-bottom">
+        <NavButton tab="dashboard" icon={ChartBarIcon} label="Stats" />
+        <div className="relative -top-6">
+           <button onClick={() => setActiveTab('create')} className={`w-14 h-14 rounded-full flex items-center justify-center shadow-xl border-4 border-stone-50 transition-all ${activeTab === 'create' ? 'bg-amber-600 text-white scale-110' : 'bg-stone-900 text-white'}`}>
+             <PlusCircleIcon className="w-8 h-8" />
+           </button>
+        </div>
+        <NavButton tab="archive" icon={ArchiveBoxIcon} label="Archives" />
+      </div>
+
     </div>
   );
 }
