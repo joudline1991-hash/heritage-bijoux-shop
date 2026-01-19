@@ -12,10 +12,12 @@ import {
   ArrowPathRoundedSquareIcon,
   ArchiveBoxIcon,
   ClipboardDocumentCheckIcon,
-  PencilSquareIcon
+  PencilSquareIcon,
+  TagIcon
 } from '@heroicons/react/24/outline';
 
-// Définition du format de l'archive
+// --- TYPES ---
+
 interface ArchiveItem {
   id: string;
   title: string;
@@ -23,6 +25,13 @@ interface ArchiveItem {
   description: string;
   date: string;
   image: string;
+}
+
+interface JewelryData {
+  title: string;
+  price: number;
+  description: string;
+  tags: string[];
 }
 
 export default function AdminPage() {
@@ -33,10 +42,11 @@ export default function AdminPage() {
 
   const [images, setImages] = useState<string[]>([]);
   const [manualJson, setManualJson] = useState(''); 
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<JewelryData | null>(null);
+  
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState(0); // Barre de progression simulée
   const [archive, setArchive] = useState<ArchiveItem[]>([]);
 
   // Chargement de l'archive au démarrage
@@ -46,7 +56,7 @@ export default function AdminPage() {
       try {
         setArchive(JSON.parse(savedArchive));
       } catch (e) {
-        console.error("Erreur lecture archive");
+        console.error("Erreur lecture archive", e);
       }
     }
   }, []);
@@ -60,7 +70,7 @@ export default function AdminPage() {
     }
   };
 
-  // --- COMPRESSION IMAGE ---
+  // --- TRAITEMENT IMAGE (Compression & Rotation) ---
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -83,14 +93,13 @@ export default function AdminPage() {
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
           
-          const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1] || '';
+          const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1] || '';
           resolve(base64);
         };
       };
     });
   };
 
-  // --- ROTATION IMAGE ---
   const rotateImage = (index: number) => {
     const base64 = images[index];
     const img = new Image();
@@ -105,7 +114,7 @@ export default function AdminPage() {
         ctx.rotate(90 * Math.PI / 180);
         ctx.drawImage(img, -img.width / 2, -img.height / 2);
         
-        const rotatedBase64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1] || '';
+        const rotatedBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1] || '';
         
         const newImages = [...images];
         newImages[index] = rotatedBase64;
@@ -114,7 +123,6 @@ export default function AdminPage() {
     };
   };
 
-  // --- GESTION DES FICHIERS ---
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
@@ -144,7 +152,14 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setResult(data);
+      
+      // On s'assure que data contient bien les champs attendus
+      setResult({
+        title: data.title || '',
+        price: data.price || 0,
+        description: data.description || '',
+        tags: data.tags || []
+      });
       setProgress(100);
     } catch (e: any) { 
       alert("Erreur analyse: " + e.message); 
@@ -157,26 +172,30 @@ export default function AdminPage() {
   // --- IMPORT MANUEL INTELLIGENT ---
   const handleManualImport = () => {
     try {
-      // Nettoyage du JSON
       const cleanedJson = manualJson.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanedJson);
       
-      let finalResult = null;
+      let finalResult: JewelryData | null = null;
 
-      // Cas A: Format Expert
+      // Cas A: Format Expert (Similaire à ton prompt précédent)
       if (parsed.produit && parsed.produit.titre) {
         finalResult = {
           title: parsed.produit.titre,
-          description: parsed.description_site.longue,
-          price: parsed.produit.prix_vente_chf,
+          description: parsed.description_site?.longue || '',
+          price: parsed.produit.prix_vente_chf || 0,
           tags: parsed.seo_metadonnees && typeof parsed.seo_metadonnees.mots_cles === 'string'
                 ? parsed.seo_metadonnees.mots_cles.split(',').map((t: string) => t.trim())
                 : []
         };
       } 
       // Cas B: Format Simple
-      else if (parsed.title && parsed.price) {
-        finalResult = parsed;
+      else if (parsed.title) {
+        finalResult = {
+          title: parsed.title,
+          price: parsed.price || 0,
+          description: parsed.description || '',
+          tags: parsed.tags || []
+        };
       }
 
       if (finalResult) {
@@ -194,12 +213,20 @@ export default function AdminPage() {
 
   // --- PUBLICATION SHOPIFY ---
   const publishToShopify = async () => {
+    if (!result) return;
     setPublishing(true);
+    
     try {
+      // NOTE: On envoie le "result" (textes) ET les "images" (tableau de base64)
+      const payload = {
+        ...result,
+        images: images // Ajout critique pour que Shopify reçoive les photos
+      };
+
       const res = await fetch('/api/shopify-create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(result),
+        body: JSON.stringify(payload),
       });
       
       if (res.ok) {
@@ -217,15 +244,16 @@ export default function AdminPage() {
         setArchive(newArchive);
         localStorage.setItem('hb_archive', JSON.stringify(newArchive));
 
-        alert('Bijou publié avec succès sur Shopify !');
+        alert('✨ Bijou publié avec succès sur Shopify !');
         setImages([]);
         setResult(null);
         setActiveTab('archive'); 
       } else {
-        throw new Error("Erreur Shopify");
+        const errData = await res.json();
+        throw new Error(errData.error || "Erreur Shopify");
       }
     } catch (error: any) {
-      alert(error.message);
+      alert("Erreur publication: " + error.message);
     } finally { 
       setPublishing(false); 
     }
@@ -241,7 +269,7 @@ export default function AdminPage() {
           <input 
             type="password" placeholder="Code secret" value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-stone-200 text-center text-lg mb-4 outline-none focus:border-amber-500"
+            className="w-full px-4 py-3 rounded-xl border border-stone-200 text-center text-lg mb-4 outline-none focus:border-amber-500 transition-colors"
           />
           <button onClick={checkPassword} className="w-full bg-stone-900 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-black transition-colors">
             Entrer
@@ -309,24 +337,28 @@ export default function AdminPage() {
             
             {/* Zone Photos */}
             <div className="bg-white p-4 md:p-8 rounded-[2rem] shadow-sm border border-stone-100">
-                {loading && <div className="h-1 bg-amber-500 w-full mb-4 rounded-full animate-pulse" />}
+                {loading && (
+                    <div className="w-full bg-stone-100 rounded-full h-1.5 mb-4 overflow-hidden">
+                        <div className="bg-amber-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+                    </div>
+                )}
                 
                 <div className="grid grid-cols-3 gap-2 md:gap-4 mb-4">
                   {images.map((img, i) => (
-                    <div key={i} className="relative aspect-square">
-                      <img src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover rounded-xl bg-stone-100 border border-stone-100" alt="preview" />
-                      <button onClick={() => setImages(images.filter((_, idx) => idx !== i))} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md"><TrashIcon className="w-3 h-3" /></button>
-                      <button onClick={() => rotateImage(i)} className="absolute bottom-1 right-1 bg-white text-stone-600 p-1 rounded-full shadow-md"><ArrowPathRoundedSquareIcon className="w-4 h-4" /></button>
+                    <div key={i} className="relative aspect-square group">
+                      <img src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover rounded-xl bg-stone-100 border border-stone-100 shadow-sm" alt="preview" />
+                      <button onClick={() => setImages(images.filter((_, idx) => idx !== i))} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md hover:scale-110 transition-transform"><TrashIcon className="w-3 h-3" /></button>
+                      <button onClick={() => rotateImage(i)} className="absolute bottom-1 right-1 bg-white text-stone-600 p-1 rounded-full shadow-md hover:scale-110 transition-transform"><ArrowPathRoundedSquareIcon className="w-4 h-4" /></button>
                     </div>
                   ))}
                   
-                  <label className="bg-stone-50 border border-stone-200 rounded-xl aspect-square flex flex-col items-center justify-center cursor-pointer active:bg-stone-100 transition-colors">
+                  <label className="bg-stone-50 border border-dashed border-stone-300 rounded-xl aspect-square flex flex-col items-center justify-center cursor-pointer active:bg-stone-100 transition-colors hover:border-amber-400">
                     <CameraIcon className="w-6 h-6 text-stone-400 mb-1" />
                     <span className="text-[9px] font-bold text-stone-500 uppercase">Caméra</span>
                     <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} className="hidden" />
                   </label>
                   
-                  <label className="bg-stone-50 border border-stone-200 rounded-xl aspect-square flex flex-col items-center justify-center cursor-pointer active:bg-stone-100 transition-colors">
+                  <label className="bg-stone-50 border border-dashed border-stone-300 rounded-xl aspect-square flex flex-col items-center justify-center cursor-pointer active:bg-stone-100 transition-colors hover:border-amber-400">
                     <PhotoIcon className="w-6 h-6 text-stone-400 mb-1" />
                     <span className="text-[9px] font-bold text-stone-500 uppercase">Galerie</span>
                     <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" />
@@ -334,7 +366,7 @@ export default function AdminPage() {
                 </div>
 
                 {images.length > 0 && !result && (
-                  <button onClick={analyzeJewelry} disabled={loading} className="w-full bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2">
+                  <button onClick={analyzeJewelry} disabled={loading} className="w-full bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2 hover:bg-amber-700">
                       {loading ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : null}
                       {loading ? "Analyse en cours..." : `Analyser (${images.length})`}
                   </button>
@@ -345,25 +377,55 @@ export default function AdminPage() {
             {result ? (
               <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-amber-100 space-y-4 animate-in zoom-in duration-300">
                  <div className="flex items-center gap-2 text-emerald-600 text-xs font-bold uppercase tracking-widest mb-2">
-                    <CheckCircleIcon className="w-4 h-4" /> Expertise IA
+                    <CheckCircleIcon className="w-4 h-4" /> Expertise Prête
                  </div>
                  
+                 {/* TITRE */}
                  <div>
                     <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Titre</label>
-                    <input className="w-full text-xl font-serif text-stone-900 border-b border-stone-100 py-2 bg-transparent outline-none focus:border-amber-500 transition-colors" value={result.title} onChange={e => setResult({...result, title: e.target.value})} placeholder="Titre du bijou" />
+                    <input 
+                        className="w-full text-xl font-serif text-stone-900 border-b border-stone-100 py-2 bg-transparent outline-none focus:border-amber-500 transition-colors" 
+                        value={result.title} 
+                        onChange={e => setResult({...result, title: e.target.value})} 
+                        placeholder="Titre du bijou" 
+                    />
                  </div>
                  
+                 {/* PRIX */}
                  <div>
                     <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Prix (CHF)</label>
-                    <input type="number" className="w-full text-2xl font-bold text-amber-600 border-b border-stone-100 py-2 bg-transparent outline-none focus:border-amber-500 transition-colors" value={result.price} onChange={e => setResult({...result, price: parseInt(e.target.value)})} />
+                    <input 
+                        type="number" 
+                        className="w-full text-2xl font-bold text-amber-600 border-b border-stone-100 py-2 bg-transparent outline-none focus:border-amber-500 transition-colors" 
+                        value={result.price} 
+                        onChange={e => setResult({...result, price: parseInt(e.target.value) || 0})} 
+                    />
+                 </div>
+
+                 {/* TAGS (NOUVEAU) */}
+                 <div>
+                    <label className="flex items-center gap-1 text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">
+                        <TagIcon className="w-3 h-3"/> Tags (séparés par des virgules)
+                    </label>
+                    <input 
+                        className="w-full text-sm text-stone-600 border border-stone-200 rounded-lg px-3 py-2 bg-stone-50 outline-none focus:border-amber-500 focus:bg-white transition-colors"
+                        value={result.tags.join(', ')}
+                        onChange={e => setResult({...result, tags: e.target.value.split(',').map(t => t.trim())})}
+                        placeholder="Or, Diamant, 18k, Vintage..."
+                    />
                  </div>
                  
+                 {/* DESCRIPTION */}
                  <div>
                     <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Description</label>
-                    <textarea className="w-full bg-stone-50 p-4 rounded-xl text-sm border border-stone-100 h-32 outline-none focus:border-amber-500 transition-colors mt-1" value={result.description.replace(/<[^>]*>?/gm, '')} onChange={e => setResult({...result, description: e.target.value})} />
+                    <textarea 
+                        className="w-full bg-stone-50 p-4 rounded-xl text-sm border border-stone-100 h-32 outline-none focus:border-amber-500 focus:bg-white transition-colors mt-1 resize-none" 
+                        value={result.description.replace(/<[^>]*>?/gm, '')} 
+                        onChange={e => setResult({...result, description: e.target.value})} 
+                    />
                  </div>
                  
-                 <button onClick={publishToShopify} disabled={publishing} className="w-full bg-stone-900 text-amber-400 py-4 rounded-xl font-bold text-lg shadow-xl active:scale-95 transition-transform mt-2">
+                 <button onClick={publishToShopify} disabled={publishing} className="w-full bg-stone-900 text-amber-400 py-4 rounded-xl font-bold text-lg shadow-xl active:scale-95 transition-transform mt-2 hover:bg-black disabled:opacity-70 disabled:active:scale-100">
                     {publishing ? 'Publication...' : 'Mettre en vente'}
                  </button>
               </div>
@@ -371,8 +433,15 @@ export default function AdminPage() {
               <div className="bg-stone-50 p-6 rounded-[2rem] border border-stone-200 text-center">
                  <ClipboardDocumentCheckIcon className="w-8 h-8 text-stone-300 mx-auto mb-2" />
                  <p className="text-xs text-stone-400 mb-3 uppercase font-bold">Ou import manuel (JSON)</p>
-                 <textarea value={manualJson} onChange={(e) => setManualJson(e.target.value)} placeholder="Coller le JSON ici..." className="w-full bg-white p-3 rounded-xl border border-stone-200 text-xs h-20 mb-3 outline-none focus:border-amber-500" />
-                 <button onClick={handleManualImport} disabled={!manualJson} className="w-full bg-white border border-stone-300 text-stone-600 py-2 rounded-lg font-bold text-sm hover:bg-stone-100">Importer</button>
+                 <textarea 
+                    value={manualJson} 
+                    onChange={(e) => setManualJson(e.target.value)} 
+                    placeholder="Coller le JSON ici..." 
+                    className="w-full bg-white p-3 rounded-xl border border-stone-200 text-xs h-20 mb-3 outline-none focus:border-amber-500" 
+                 />
+                 <button onClick={handleManualImport} disabled={!manualJson} className="w-full bg-white border border-stone-300 text-stone-600 py-2 rounded-lg font-bold text-sm hover:bg-stone-100 disabled:opacity-50">
+                    Importer
+                 </button>
               </div>
             )}
           </div>
@@ -386,7 +455,7 @@ export default function AdminPage() {
               {archive.map(item => (
                 <div key={item.id} className="bg-white p-3 rounded-2xl shadow-sm border border-stone-100 flex gap-3 items-center">
                   {item.image ? (
-                    <img src={`data:image/jpeg;base64,${item.image}`} className="w-16 h-16 object-cover rounded-xl bg-stone-100" alt="archive" />
+                    <img src={`data:image/jpeg;base64,${item.image}`} className="w-16 h-16 object-cover rounded-xl bg-stone-100 border border-stone-50" alt="archive" />
                   ) : <div className="w-16 h-16 bg-stone-100 rounded-xl flex items-center justify-center"><PhotoIcon className="w-6 h-6 text-stone-300"/></div>}
                   
                   <div className="flex-1 min-w-0">
@@ -395,10 +464,27 @@ export default function AdminPage() {
                   </div>
                   
                   <div className="flex gap-1">
-                    <button onClick={() => { setResult(item); if(item.image) setImages([item.image]); setActiveTab('create'); window.scrollTo({top:0, behavior:'smooth'}); }} className="p-2 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100">
+                    <button onClick={() => { 
+                        // Recharge l'item dans l'éditeur
+                        setResult({
+                            title: item.title,
+                            price: item.price,
+                            description: item.description,
+                            tags: [] // Les tags ne sont pas stockés dans l'archive simple pour l'instant
+                        }); 
+                        if(item.image) setImages([item.image]); 
+                        setActiveTab('create'); 
+                        window.scrollTo({top:0, behavior:'smooth'}); 
+                    }} className="p-2 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors">
                       <PencilSquareIcon className="w-5 h-5" />
                     </button>
-                    <button onClick={() => { if(confirm('Supprimer ?')) { const n = archive.filter(a => a.id !== item.id); setArchive(n); localStorage.setItem('hb_archive', JSON.stringify(n)); }}} className="p-2 bg-stone-100 text-stone-400 rounded-lg hover:bg-red-50 hover:text-red-500">
+                    <button onClick={() => { 
+                        if(confirm('Supprimer de l\'historique ?')) { 
+                            const n = archive.filter(a => a.id !== item.id); 
+                            setArchive(n); 
+                            localStorage.setItem('hb_archive', JSON.stringify(n)); 
+                        }
+                    }} className="p-2 bg-stone-100 text-stone-400 rounded-lg hover:bg-red-50 hover:text-red-500 transition-colors">
                       <TrashIcon className="w-5 h-5" />
                     </button>
                   </div>
