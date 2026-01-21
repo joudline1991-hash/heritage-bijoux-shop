@@ -13,7 +13,8 @@ import {
   ArchiveBoxIcon,
   ClipboardDocumentCheckIcon,
   PencilSquareIcon,
-  TagIcon
+  DocumentTextIcon, // Pour le bouton saisie manuelle
+  TagIcon // Pour le champ tags
 } from '@heroicons/react/24/outline';
 
 // --- TYPES ---
@@ -46,7 +47,7 @@ export default function AdminPage() {
   
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [progress, setProgress] = useState(0); // Barre de progression simulée
+  const [progress, setProgress] = useState(0);
   const [archive, setArchive] = useState<ArchiveItem[]>([]);
 
   // Chargement de l'archive au démarrage
@@ -70,7 +71,7 @@ export default function AdminPage() {
     }
   };
 
-  // --- TRAITEMENT IMAGE (Compression & Rotation) ---
+  // --- TRAITEMENT IMAGE ---
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -93,7 +94,7 @@ export default function AdminPage() {
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
           
-          const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1] || '';
+          const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1] || '';
           resolve(base64);
         };
       };
@@ -114,7 +115,7 @@ export default function AdminPage() {
         ctx.rotate(90 * Math.PI / 180);
         ctx.drawImage(img, -img.width / 2, -img.height / 2);
         
-        const rotatedBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1] || '';
+        const rotatedBase64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1] || '';
         
         const newImages = [...images];
         newImages[index] = rotatedBase64;
@@ -137,7 +138,7 @@ export default function AdminPage() {
     }
   };
 
-  // --- ANALYSE IA (GEMINI) ---
+  // --- ANALYSE IA ---
   const analyzeJewelry = async () => {
     if (images.length === 0) return;
     setLoading(true);
@@ -153,7 +154,6 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       
-      // On s'assure que data contient bien les champs attendus
       setResult({
         title: data.title || '',
         price: data.price || 0,
@@ -169,7 +169,17 @@ export default function AdminPage() {
     }
   };
 
-  // --- IMPORT MANUEL INTELLIGENT ---
+  // --- NOUVEAU : SAISIE MANUELLE ---
+  const handleCreateManual = () => {
+    setResult({
+      title: '',
+      price: 0,
+      description: '',
+      tags: []
+    });
+  };
+
+  // --- IMPORT MANUEL JSON ---
   const handleManualImport = () => {
     try {
       const cleanedJson = manualJson.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -177,7 +187,6 @@ export default function AdminPage() {
       
       let finalResult: JewelryData | null = null;
 
-      // Cas A: Format Expert (Similaire à ton prompt précédent)
       if (parsed.produit && parsed.produit.titre) {
         finalResult = {
           title: parsed.produit.titre,
@@ -187,9 +196,7 @@ export default function AdminPage() {
                 ? parsed.seo_metadonnees.mots_cles.split(',').map((t: string) => t.trim())
                 : []
         };
-      } 
-      // Cas B: Format Simple
-      else if (parsed.title) {
+      } else if (parsed.title) {
         finalResult = {
           title: parsed.title,
           price: parsed.price || 0,
@@ -202,11 +209,11 @@ export default function AdminPage() {
         setResult(finalResult);
         setManualJson(''); 
       } else {
-        alert("Le format JSON n'est pas reconnu.");
+        alert("Format JSON non reconnu.");
       }
 
     } catch (e) {
-      alert("Erreur de lecture JSON.");
+      alert("Erreur JSON.");
       console.error(e);
     }
   };
@@ -214,13 +221,18 @@ export default function AdminPage() {
   // --- PUBLICATION SHOPIFY ---
   const publishToShopify = async () => {
     if (!result) return;
+    if (!result.title || !result.price) {
+        alert("Le titre et le prix sont obligatoires.");
+        return;
+    }
+
     setPublishing(true);
     
     try {
-      // NOTE: On envoie le "result" (textes) ET les "images" (tableau de base64)
+      // NOTE: On envoie le "result" (textes) ET les "images"
       const payload = {
         ...result,
-        images: images // Ajout critique pour que Shopify reçoive les photos
+        images: images 
       };
 
       const res = await fetch('/api/shopify-create', {
@@ -230,7 +242,6 @@ export default function AdminPage() {
       });
       
       if (res.ok) {
-        // Ajout à l'archive locale
         const newItem: ArchiveItem = {
           id: Date.now().toString(),
           title: result.title,
@@ -279,7 +290,7 @@ export default function AdminPage() {
     );
   }
 
-  // --- COMPOSANT BOUTON NAV ---
+  // --- BOUTON NAV COMPONENT ---
   const NavButton = ({ tab, icon: Icon, label }: any) => (
     <button onClick={() => setActiveTab(tab)} className={`flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 p-2 md:p-4 rounded-xl transition-all ${activeTab === tab ? 'text-amber-700 bg-amber-50' : 'text-stone-400 hover:bg-stone-50'}`}>
       <Icon className="w-6 h-6" />
@@ -287,7 +298,6 @@ export default function AdminPage() {
     </button>
   );
 
-  // --- RENDU PRINCIPAL ---
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col md:flex-row">
       
@@ -366,18 +376,34 @@ export default function AdminPage() {
                 </div>
 
                 {images.length > 0 && !result && (
-                  <button onClick={analyzeJewelry} disabled={loading} className="w-full bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2 hover:bg-amber-700">
-                      {loading ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : null}
-                      {loading ? "Analyse en cours..." : `Analyser (${images.length})`}
-                  </button>
+                  <div className="flex flex-col gap-3">
+                    <button onClick={analyzeJewelry} disabled={loading} className="w-full bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2 hover:bg-amber-700">
+                        {loading ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : null}
+                        {loading ? "Analyse en cours..." : `Analyser avec l'IA`}
+                    </button>
+                    
+                    <button onClick={handleCreateManual} disabled={loading} className="w-full bg-white border-2 border-stone-200 text-stone-600 py-3 rounded-xl font-bold active:scale-95 transition-transform flex justify-center gap-2 hover:bg-stone-50">
+                        <DocumentTextIcon className="w-5 h-5" /> Saisie Manuelle
+                    </button>
+                  </div>
+                )}
+                
+                {images.length === 0 && !result && (
+                   <div className="text-center text-stone-400 text-xs mt-2 italic">
+                      Ajoutez d'abord une photo pour activer les boutons.
+                   </div>
                 )}
             </div>
 
             {/* Zone Résultat / Import */}
             {result ? (
               <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-amber-100 space-y-4 animate-in zoom-in duration-300">
-                 <div className="flex items-center gap-2 text-emerald-600 text-xs font-bold uppercase tracking-widest mb-2">
-                    <CheckCircleIcon className="w-4 h-4" /> Expertise Prête
+                 <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-emerald-600 text-xs font-bold uppercase tracking-widest">
+                      <CheckCircleIcon className="w-4 h-4" /> Prêt à publier
+                    </div>
+                    {/* Bouton pour annuler/revenir en arrière */}
+                    <button onClick={() => setResult(null)} className="text-stone-400 text-xs underline">Annuler</button>
                  </div>
                  
                  {/* TITRE */}
@@ -402,7 +428,7 @@ export default function AdminPage() {
                     />
                  </div>
 
-                 {/* TAGS (NOUVEAU) */}
+                 {/* TAGS */}
                  <div>
                     <label className="flex items-center gap-1 text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">
                         <TagIcon className="w-3 h-3"/> Tags (séparés par des virgules)
@@ -430,18 +456,18 @@ export default function AdminPage() {
                  </button>
               </div>
             ) : (
-              <div className="bg-stone-50 p-6 rounded-[2rem] border border-stone-200 text-center">
+              <div className="bg-stone-50 p-6 rounded-[2rem] border border-stone-200 text-center opacity-70 hover:opacity-100 transition-opacity">
                  <ClipboardDocumentCheckIcon className="w-8 h-8 text-stone-300 mx-auto mb-2" />
                  <p className="text-xs text-stone-400 mb-3 uppercase font-bold">Ou import manuel (JSON)</p>
-                 <textarea 
-                    value={manualJson} 
-                    onChange={(e) => setManualJson(e.target.value)} 
-                    placeholder="Coller le JSON ici..." 
-                    className="w-full bg-white p-3 rounded-xl border border-stone-200 text-xs h-20 mb-3 outline-none focus:border-amber-500" 
-                 />
-                 <button onClick={handleManualImport} disabled={!manualJson} className="w-full bg-white border border-stone-300 text-stone-600 py-2 rounded-lg font-bold text-sm hover:bg-stone-100 disabled:opacity-50">
-                    Importer
-                 </button>
+                 <div className="flex gap-2">
+                   <textarea 
+                     value={manualJson} 
+                     onChange={(e) => setManualJson(e.target.value)} 
+                     placeholder="Coller le JSON ici..." 
+                     className="flex-1 bg-white p-3 rounded-xl border border-stone-200 text-xs h-12 resize-none outline-none focus:border-amber-500" 
+                   />
+                   <button onClick={handleManualImport} disabled={!manualJson} className="bg-white border border-stone-300 text-stone-600 px-4 rounded-lg font-bold text-xs hover:bg-stone-100 disabled:opacity-50">Import</button>
+                 </div>
               </div>
             )}
           </div>
@@ -470,7 +496,7 @@ export default function AdminPage() {
                             title: item.title,
                             price: item.price,
                             description: item.description,
-                            tags: [] // Les tags ne sont pas stockés dans l'archive simple pour l'instant
+                            tags: [] 
                         }); 
                         if(item.image) setImages([item.image]); 
                         setActiveTab('create'); 
@@ -497,7 +523,7 @@ export default function AdminPage() {
 
       </div>
 
-      {/* 3. NAVIGATION BASSE (MOBILE SEULEMENT) */}
+      {/* 3. NAVIGATION BASSE (MOBILE) */}
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-stone-200 px-6 py-3 flex justify-between items-center z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] safe-area-bottom">
         <NavButton tab="dashboard" icon={ChartBarIcon} label="Stats" />
         <div className="relative -top-6">
