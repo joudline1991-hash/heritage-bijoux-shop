@@ -13,8 +13,10 @@ import {
   ArchiveBoxIcon,
   ClipboardDocumentCheckIcon,
   PencilSquareIcon,
-  DocumentTextIcon, // Pour le bouton saisie manuelle
-  TagIcon // Pour le champ tags
+  DocumentTextIcon, 
+  TagIcon,
+  SparklesIcon,      // Pour le métal
+  ArrowsRightLeftIcon // Pour la taille
 } from '@heroicons/react/24/outline';
 
 // --- TYPES ---
@@ -33,6 +35,8 @@ interface JewelryData {
   price: number;
   description: string;
   tags: string[];
+  metal: string; // NOUVEAU
+  size: string;  // NOUVEAU
 }
 
 export default function AdminPage() {
@@ -158,7 +162,9 @@ export default function AdminPage() {
         title: data.title || '',
         price: data.price || 0,
         description: data.description || '',
-        tags: data.tags || []
+        tags: data.tags || [],
+        metal: data.metal || '', // Récupération si l'IA le renvoie
+        size: data.size || ''    // Récupération si l'IA le renvoie
       });
       setProgress(100);
     } catch (e: any) { 
@@ -169,13 +175,15 @@ export default function AdminPage() {
     }
   };
 
-  // --- NOUVEAU : SAISIE MANUELLE ---
+  // --- SAISIE MANUELLE ---
   const handleCreateManual = () => {
     setResult({
       title: '',
       price: 0,
       description: '',
-      tags: []
+      tags: [],
+      metal: '',
+      size: ''
     });
   };
 
@@ -192,16 +200,18 @@ export default function AdminPage() {
           title: parsed.produit.titre,
           description: parsed.description_site?.longue || '',
           price: parsed.produit.prix_vente_chf || 0,
-          tags: parsed.seo_metadonnees && typeof parsed.seo_metadonnees.mots_cles === 'string'
-                ? parsed.seo_metadonnees.mots_cles.split(',').map((t: string) => t.trim())
-                : []
+          tags: parsed.seo_metadonnees?.mots_cles?.split(',').map((t: string) => t.trim()) || [],
+          metal: parsed.produit.materiau || '',
+          size: parsed.produit.taille || ''
         };
       } else if (parsed.title) {
         finalResult = {
           title: parsed.title,
           price: parsed.price || 0,
           description: parsed.description || '',
-          tags: parsed.tags || []
+          tags: parsed.tags || [],
+          metal: parsed.metal || '',
+          size: parsed.size || ''
         };
       }
 
@@ -229,7 +239,7 @@ export default function AdminPage() {
     setPublishing(true);
     
     try {
-      // NOTE: On envoie le "result" (textes) ET les "images"
+      // NOTE: On envoie tout le result + les images
       const payload = {
         ...result,
         images: images 
@@ -375,27 +385,24 @@ export default function AdminPage() {
                   </label>
                 </div>
 
-                {images.length > 0 && !result && (
+                {/* BOUTONS D'ACTION (IA / MANUEL) - Visibles même sans résultat */}
+                {!result && (
                   <div className="flex flex-col gap-3">
-                    <button onClick={analyzeJewelry} disabled={loading} className="w-full bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2 hover:bg-amber-700">
-                        {loading ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : null}
-                        {loading ? "Analyse en cours..." : `Analyser avec l'IA`}
-                    </button>
+                    {images.length > 0 && (
+                        <button onClick={analyzeJewelry} disabled={loading} className="w-full bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2 hover:bg-amber-700">
+                            {loading ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : null}
+                            {loading ? "Analyse en cours..." : `Analyser avec l'IA`}
+                        </button>
+                    )}
                     
-                    <button onClick={handleCreateManual} disabled={loading} className="w-full bg-white border-2 border-stone-200 text-stone-600 py-3 rounded-xl font-bold active:scale-95 transition-transform flex justify-center gap-2 hover:bg-stone-50">
+                    <button onClick={handleCreateManual} disabled={loading} className="w-full bg-white border-2 border-stone-200 text-stone-600 py-3 rounded-xl font-bold active:scale-95 transition-transform flex justify-center items-center gap-2 hover:bg-stone-50">
                         <DocumentTextIcon className="w-5 h-5" /> Saisie Manuelle
                     </button>
                   </div>
                 )}
-                
-                {images.length === 0 && !result && (
-                   <div className="text-center text-stone-400 text-xs mt-2 italic">
-                      Ajoutez d'abord une photo pour activer les boutons.
-                   </div>
-                )}
             </div>
 
-            {/* Zone Résultat / Import */}
+            {/* Zone Résultat / Formulaire */}
             {result ? (
               <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-amber-100 space-y-4 animate-in zoom-in duration-300">
                  <div className="flex items-center justify-between mb-2">
@@ -417,28 +424,54 @@ export default function AdminPage() {
                     />
                  </div>
                  
-                 {/* PRIX */}
-                 <div>
-                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Prix (CHF)</label>
-                    <input 
-                        type="number" 
-                        className="w-full text-2xl font-bold text-amber-600 border-b border-stone-100 py-2 bg-transparent outline-none focus:border-amber-500 transition-colors" 
-                        value={result.price} 
-                        onChange={e => setResult({...result, price: parseInt(e.target.value) || 0})} 
-                    />
+                 {/* LIGNE 1 : PRIX & METAL */}
+                 <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Prix (CHF)</label>
+                        <input 
+                            type="number" 
+                            className="w-full text-lg font-bold text-amber-600 border-b border-stone-100 py-2 bg-transparent outline-none focus:border-amber-500 transition-colors" 
+                            value={result.price} 
+                            onChange={e => setResult({...result, price: parseInt(e.target.value) || 0})} 
+                        />
+                    </div>
+                    <div>
+                        <label className="flex items-center gap-1 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                            <SparklesIcon className="w-3 h-3"/> Métal
+                        </label>
+                        <input 
+                            className="w-full text-sm text-stone-700 border-b border-stone-100 py-2 bg-transparent outline-none focus:border-amber-500 transition-colors" 
+                            value={result.metal} 
+                            onChange={e => setResult({...result, metal: e.target.value})} 
+                            placeholder="Or 18k, Argent..." 
+                        />
+                    </div>
                  </div>
 
-                 {/* TAGS */}
-                 <div>
-                    <label className="flex items-center gap-1 text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">
-                        <TagIcon className="w-3 h-3"/> Tags (séparés par des virgules)
-                    </label>
-                    <input 
-                        className="w-full text-sm text-stone-600 border border-stone-200 rounded-lg px-3 py-2 bg-stone-50 outline-none focus:border-amber-500 focus:bg-white transition-colors"
-                        value={result.tags.join(', ')}
-                        onChange={e => setResult({...result, tags: e.target.value.split(',').map(t => t.trim())})}
-                        placeholder="Or, Diamant, 18k, Vintage..."
-                    />
+                 {/* LIGNE 2 : TAILLE & TAGS */}
+                 <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="flex items-center gap-1 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                            <ArrowsRightLeftIcon className="w-3 h-3"/> Taille
+                        </label>
+                        <input 
+                            className="w-full text-sm text-stone-700 border-b border-stone-100 py-2 bg-transparent outline-none focus:border-amber-500 transition-colors" 
+                            value={result.size} 
+                            onChange={e => setResult({...result, size: e.target.value})} 
+                            placeholder="52, 54, Ajustable..." 
+                        />
+                    </div>
+                    <div>
+                        <label className="flex items-center gap-1 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                            <TagIcon className="w-3 h-3"/> Tags
+                        </label>
+                        <input 
+                            className="w-full text-sm text-stone-700 border-b border-stone-100 py-2 bg-transparent outline-none focus:border-amber-500 transition-colors"
+                            value={result.tags.join(', ')}
+                            onChange={e => setResult({...result, tags: e.target.value.split(',').map(t => t.trim())})}
+                            placeholder="Vintage, Pierre..."
+                        />
+                    </div>
                  </div>
                  
                  {/* DESCRIPTION */}
@@ -496,7 +529,9 @@ export default function AdminPage() {
                             title: item.title,
                             price: item.price,
                             description: item.description,
-                            tags: [] 
+                            tags: [],
+                            metal: '',
+                            size: '' 
                         }); 
                         if(item.image) setImages([item.image]); 
                         setActiveTab('create'); 
